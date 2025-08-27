@@ -1,0 +1,15 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	logallrefupdates = true
+[branch "server"]
+	vscode-merge-base = origin/server
+	remote = origin
+	merge = refs/heads/server
+[remote "origin"]
+	url = https://github.com/DhimasArdinata/atomic-web-ta.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+[branch "dev"]
+	remote = origin
+	merge = refs/heads/dev
