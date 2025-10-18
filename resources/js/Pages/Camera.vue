@@ -22,6 +22,27 @@ const isExporting = ref(false);
 const selectedGreenhouse = ref("");
 const rowImageLoading = ref({});
 
+const actuators = ref([
+    {
+        name: "Exhaust Fan",
+        icon: "fas fa-fan", // Font Awesome icon class
+        color: "text-yellow-500",
+        status: false, // false = off, true = on
+    },
+    {
+        name: "Dehumidifier",
+        icon: "fas fa-tint",
+        color: "text-cyan-500",
+        status: false,
+    },
+    {
+        name: "Blower",
+        icon: "fas fa-fan",
+        color: "text-red-500",
+        status: false,
+    },
+]);
+
 // grid
 const gridOptions = ref({
     columnDefs: [
@@ -325,6 +346,48 @@ const onRowSelected = (event, gh_id) => {
                         </div>
                     </div>
                 </div>
+
+                <div
+                    class="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"
+                >
+                    <div
+                        v-for="(actuator, index) in actuators"
+                        :key="index"
+                        class="bg-white overflow-hidden shadow-sm rounded-lg p-4"
+                    >
+                        <div
+                            class="flex items-center justify-between h-full"
+                        >
+                            <div class="flex items-center">
+                                <i
+                                    :class="[
+                                        actuator.icon,
+                                        actuator.color,
+                                        'text-3xl w-10',
+                                    ]"
+                                ></i>
+                                <div class="ml-4">
+                                    <p
+                                        class="font-semibold text-gray-800"
+                                    >
+                                        {{ actuator.name }}
+                                    </p>
+                                    <p class="text-sm text-gray-500">
+                                        Status
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div
+                                :class="actuator.status ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+                                class="px-3 py-1 text-xs font-bold rounded-full"
+                            >
+                                {{ actuator.status ? 'ON' : 'OFF' }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="flex flex-col lg:flex-row gap-2">
                     <div
                         v-for="greenhouse in greenhouses"

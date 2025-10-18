@@ -19,4 +19,4 @@ class UserSeeder extends Seeder
             ['password' => bcrypt('medini123')]
         );
     }
-}
+}   
