@@ -128,13 +128,14 @@ defineProps(["titlePage"]);
                 <!-- Log Out Button -->
                 <div class="ml-auto">
                     <BreezeDropdown align="right" width="48">
-                        <template #trigger>
+                        <template #trigger="{ open }">
                             <button
                                 class="w-full flex justify-between items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
                             >
                                 {{ $page.props.auth.user.name }}
                                 <svg
-                                    class="h-4 w-4"
+                                    class="h-4 w-4 transition-transform duration-200"
+                                    :class="{ 'rotate-180': open }"
                                     xmlns="http://www.w3.org/2000/svg"
                                     viewBox="0 0 20 20"
                                     fill="currentColor"
