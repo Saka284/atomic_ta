@@ -45,6 +45,7 @@ class SensorDataExport implements FromCollection, WithHeadings
                     'temperature' => null,
                     'humidity' => null,
                     'light_intensity' => null,
+                    'rssi' => null,
                 ];
             }
 
@@ -54,7 +55,9 @@ class SensorDataExport implements FromCollection, WithHeadings
                 $groupedData[$key]['humidity'] = $data->value;
             } elseif ($data->sensor_name === 'Light Intensity') {
                 $groupedData[$key]['light_intensity'] = $data->value;
-            }
+            } elseif ($data->sensor_name === 'RSSI') {
+                $groupedData[$key]['rssi'] = $data->value;
+}
         }
 
         return collect(array_values($groupedData));
@@ -62,6 +65,6 @@ class SensorDataExport implements FromCollection, WithHeadings
 
     public function headings(): array
     {
-        return ["Node ID", "Recorded At", "Temperature", "Humidity", "Light Intensity"];
+        return ["Node ID", "Recorded At", "Temperature", "Humidity", "Light Intensity", "RSSI"];
     }
 }
