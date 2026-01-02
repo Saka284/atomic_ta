@@ -22,7 +22,7 @@ const activeParameter = ref("temperature");
 const mapContainer = ref(null);
 
 // ===============================
-// POSISI NODE (SUDAH FINAL)
+// POSISI NODE 
 // ===============================
 const nodeLocations = {
   1: [930, 220],
@@ -51,17 +51,17 @@ function normalizeTemp(value) {
 let heatLayer = null;
 
 function drawHeatmap(map, heatData) {
-  const zoom = map.getZoom();
-  const radius = 90 + zoom * 30; // DINAMIS
+  const radius = 120;
 
   if (heatLayer) {
     map.removeLayer(heatLayer);
   }
 
   heatLayer = L.heatLayer(heatData, {
+    pane: "heatPane",
     radius,
-    blur: radius * 0.6,
-    minOpacity: 0.65,
+    blur: radius * 1,
+    minOpacity: 0.8,
     gradient: {
       0.0: "#16a34a", // hijau (aman)
       0.4: "#84cc16",
@@ -79,9 +79,14 @@ onMounted(() => {
 function initMap() {
   const map = L.map(mapContainer.value, {
     crs: L.CRS.Simple,
-    minZoom: -2,
+    minZoom: -1.5,
     maxZoom: 2,
+    zoomControl: true,
   });
+
+  map.createPane("heatPane");
+  map.getPane("heatPane").style.zIndex = 400;
+  map.getPane("heatPane").style.pointerEvents = "none";
 
   const bounds = [[0, 0], [1000, 1500]];
   L.imageOverlay("/images/greenhouse_plan.png", bounds).addTo(map);
@@ -96,10 +101,6 @@ function initMap() {
   });
 
   drawHeatmap(map, heatData);
-
-  map.on("zoomend", () => {
-    drawHeatmap(map, heatData);
-  });
 
   // ===============================
   // MARKER NODE
