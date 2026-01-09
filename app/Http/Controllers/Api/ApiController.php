@@ -512,7 +512,10 @@ class ApiController extends Controller
 
     public function getControlling()
     {
-        $data = Greenhouse::with('sensor')->get();
+        $data = Greenhouse::with(['sensor' => function ($query) {
+            $query->whereNotIn('name', ['RSSI']);
+        }])->get();
+        
         return response()->json([
             'success' => true,
             'data' => $data
