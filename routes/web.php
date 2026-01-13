@@ -25,6 +25,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/table', [PageController::class, 'table'])->name('table');
     Route::get('/camera', [PageController::class, 'camera'])->name('camera');
     Route::get('/controlling', [PageController::class, 'controlling'])->name('controlling');
+    Route::get('/heatmap', [PageController::class, 'heatmap'])->name('heatmap');
 });
 
 require __DIR__ . '/auth.php';

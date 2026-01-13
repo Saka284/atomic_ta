@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\CameraData;
 use App\Models\Greenhouse;
+use App\Models\Sensor;
 use App\Models\SensorData;
+use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -68,6 +70,63 @@ class PageController extends Controller
     {
         return Inertia::render('Table');
     }
+
+    public function heatmap(Request $request)
+    {
+        $gh_id = $request->input('gh_id', 1);
+        $sensorName = 'Temperature';
+
+        // ===============================
+        // DATA ASLI
+        // ===============================
+        // $sensorData = SensorData::select('sensor_data.node_id', 'sensor_data.value', 'sensor_data.recorded_at')
+        //     ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
+        //     ->where('sensors.gh_id', $gh_id)
+        //     ->where('sensors.name', $sensorName)
+        //     ->orderBy('sensor_data.recorded_at', 'desc')
+        //     ->get()
+        //     ->unique('node_id')
+        //     ->values();
+
+        // // ===============================
+        // // FALLBACK DUMMY 
+        // // ===============================
+        // if ($sensorData->isEmpty()) {
+        //     $sensorData = collect([
+        //         ['node_id' => 1, 'value' => 19],
+        //         ['node_id' => 2, 'value' => 26],
+        //         ['node_id' => 3, 'value' => 30],
+        //         ['node_id' => 4, 'value' => 34],
+        //         ['node_id' => 5, 'value' => 38],
+        //     ]);
+        // }
+
+        $sensorData = collect([
+            ['node_id' => 1, 'value' => 20],
+            ['node_id' => 2, 'value' => 25],
+            ['node_id' => 3, 'value' => 30],
+            ['node_id' => 4, 'value' => 35],
+            ['node_id' => 5, 'value' => 40],
+        ]);
+
+        $greenhouses = Greenhouse::select('id', 'name')->get();
+
+        // Get threshold data from Temperature sensor for this greenhouse
+        $thresholdData = Sensor::where('gh_id', $gh_id)
+            ->where('name', $sensorName)
+            ->first(['threshold_min', 'threshold_max']);
+
+        return Inertia::render('Heatmap', [
+            'sensorData' => $sensorData,
+            'greenhouses' => $greenhouses,
+            'activeGhId' => (int) $gh_id,
+            'thresholds' => [
+                'min' => $thresholdData->threshold_min ?? 25,
+                'max' => $thresholdData->threshold_max ?? 35,
+            ],
+        ]);
+    }
+
 
     public function camera()
     {
