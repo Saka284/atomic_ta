@@ -121,8 +121,10 @@ function normalizeTemp(value) {
   const val = parseFloat(value);
   if (isNaN(val)) return 0;
   // Normalkan berdasarkan threshold min-max untuk intensitas warna
+  // Nilai bisa > 1 untuk Kritis (di atas threshold max)
   let normalized = (val - props.thresholds.min) / (props.thresholds.max - props.thresholds.min);
-  return Math.min(Math.max(normalized, 0), 1);
+  // Clamp antara 0 dan 1.5 (1.5 = jauh di atas max = Kritis merah)
+  return Math.min(Math.max(normalized, 0), 1.5);
 }
 
 // ===============================
@@ -213,6 +215,12 @@ function drawMarkers() {
       icon: createCustomIcon(sensor.node_id, sensor.value),
     });
 
+    // Cek apakah node di bagian atas gambar
+    // Dalam Simple CRS: y besar = atas, y kecil = bawah
+    // Node 1, 3, 5 (y=420) di atas → popup di bawah marker
+    // Node 2, 4 (y=35) di bawah → popup di atas marker (default)
+    const isTopNode = y > 200;
+    
     // Popup dengan informasi node
     marker.bindPopup(`
       <div style="text-align: center; min-width: 120px;">
@@ -228,11 +236,261 @@ function drawMarkers() {
       </div>
     `, {
       closeButton: true,
-      className: "node-popup",
+      className: isTopNode ? "node-popup popup-bottom" : "node-popup",
+      // Offset: [x, y] - y positif = popup ke bawah
+      offset: isTopNode ? [0, 140] : [0, 0],
     });
 
     marker.addTo(markersLayer);
   });
+}
+
+// ===============================
+// TOGGLE: GUNAKAN CUSTOM HEATMAP ATAU LEAFLET.HEAT
+// Set ke true untuk custom canvas, false untuk leaflet.heat lama
+// ===============================
+const USE_CUSTOM_HEATMAP = true;
+
+// ===============================
+// CUSTOM CANVAS HEATMAP LAYER
+// IDW (Inverse Distance Weighting) interpolation
+// ===============================
+let customHeatLayer = null;
+
+// Radius dalam koordinat gambar (bukan pixel)
+// Nilai ini ~3-4x lebih besar dan konsisten saat zoom
+const HEATMAP_RADIUS = 300;
+
+// Gradient colors untuk interpolasi - smooth blending
+const heatmapGradientColors = [
+  { stop: 0.0, r: 34, g: 197, b: 94 },   // #22c55e - Aman (hijau)
+  { stop: 0.35, r: 132, g: 204, b: 22 }, // #84cc16 - Normal (lime)
+  { stop: 0.65, r: 250, g: 204, b: 21 }, // #facc15 - Waspada (kuning)
+  { stop: 1.0, r: 251, g: 146, b: 60 },  // #fb923c - Mendekati max (orange)
+  { stop: 1.25, r: 239, g: 68, b: 68 },  // #ef4444 - Kritis (merah)
+  { stop: 1.5, r: 220, g: 38, b: 38 },   // #dc2626 - Sangat Kritis (merah gelap)
+];
+
+function interpolateColor(value) {
+  // Clamp value 0-1.5 (1.5 for Kritis)
+  const v = Math.max(0, Math.min(1.5, value));
+  
+  // Find gradient segment
+  let lower = heatmapGradientColors[0];
+  let upper = heatmapGradientColors[heatmapGradientColors.length - 1];
+  
+  for (let i = 0; i < heatmapGradientColors.length - 1; i++) {
+    if (v >= heatmapGradientColors[i].stop && v <= heatmapGradientColors[i + 1].stop) {
+      lower = heatmapGradientColors[i];
+      upper = heatmapGradientColors[i + 1];
+      break;
+    }
+  }
+  
+  // Interpolate between lower and upper
+  const range = upper.stop - lower.stop;
+  const t = range === 0 ? 0 : (v - lower.stop) / range;
+  
+  return {
+    r: Math.round(lower.r + (upper.r - lower.r) * t),
+    g: Math.round(lower.g + (upper.g - lower.g) * t),
+    b: Math.round(lower.b + (upper.b - lower.b) * t),
+  };
+}
+
+// Custom Leaflet Layer untuk Canvas Heatmap
+const CanvasHeatmapLayer = L.Layer.extend({
+  options: {
+    opacity: 0.6,
+    radius: HEATMAP_RADIUS,
+  },
+
+  initialize: function(sensorData, options) {
+    this._sensorData = sensorData || [];
+    L.setOptions(this, options);
+  },
+
+  onAdd: function(map) {
+    this._map = map;
+    
+    // Create canvas element
+    this._canvas = L.DomUtil.create('canvas', 'leaflet-heatmap-canvas');
+    this._canvas.style.position = 'absolute';
+    this._canvas.style.pointerEvents = 'none';
+    
+    // Add to overlay pane
+    const pane = this.getPane();
+    pane.appendChild(this._canvas);
+    
+    // Bindmo events
+    map.on('zoomend viewreset moveend resize', this._redraw, this);
+    
+    this._redraw();
+  },
+
+  onRemove: function(map) {
+    L.DomUtil.remove(this._canvas);
+    map.off('zoomend viewreset moveend resize', this._redraw, this);
+  },
+
+  setData: function(sensorData) {
+    this._sensorData = sensorData || [];
+    this._redraw();
+  },
+
+  _redraw: function() {
+    if (!this._map) return;
+
+    const mapSize = this._map.getSize();
+    const canvas = this._canvas;
+    
+    // Set canvas size
+    canvas.width = mapSize.x;
+    canvas.height = mapSize.y;
+    
+    // Position canvas
+    const topLeft = this._map.containerPointToLayerPoint([0, 0]);
+    L.DomUtil.setPosition(canvas, topLeft);
+    
+    // Draw heatmap
+    this._renderHeatmap();
+  },
+
+  _renderHeatmap: function() {
+    const ctx = this._canvas.getContext('2d');
+    const width = this._canvas.width;
+    const height = this._canvas.height;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    if (!this._sensorData || this._sensorData.length === 0) return;
+    
+    // Get image bounds in pixel coordinates
+    const imgTopLeft = this._map.latLngToContainerPoint([IMAGE_HEIGHT, 0]);
+    const imgBottomRight = this._map.latLngToContainerPoint([0, IMAGE_WIDTH]);
+    
+    const imgLeft = Math.max(0, imgTopLeft.x);
+    const imgTop = Math.max(0, imgTopLeft.y);
+    const imgRight = Math.min(width, imgBottomRight.x);
+    const imgBottom = Math.min(height, imgBottomRight.y);
+    
+    // Skip if image not visible
+    if (imgLeft >= imgRight || imgTop >= imgBottom) return;
+    
+    // Create imageData for pixel manipulation
+    const imgWidth = Math.ceil(imgRight - imgLeft);
+    const imgHeight = Math.ceil(imgBottom - imgTop);
+    
+    if (imgWidth <= 0 || imgHeight <= 0) return;
+    
+    const imageData = ctx.createImageData(imgWidth, imgHeight);
+    const data = imageData.data;
+    
+    // Prepare sensor data with pixel positions
+    const sensors = this._sensorData.map(sensor => {
+      const loc = nodeLocations[sensor.node_id];
+      if (!loc) return null;
+      const [y, x] = loc;
+      const pixelPos = this._map.latLngToContainerPoint([y, x]);
+      return {
+        px: pixelPos.x - imgLeft,
+        py: pixelPos.y - imgTop,
+        intensity: normalizeTemp(sensor.value),
+        value: parseFloat(sensor.value),
+      };
+    }).filter(s => s !== null);
+    
+    if (sensors.length === 0) return;
+    
+    // IDW power parameter - higher = sharper transitions near sensors
+    const IDW_POWER = 2;
+    
+    // Render each pixel using IDW (Inverse Distance Weighting)
+    // SEMUA sensor mempengaruhi SEMUA pixel, dengan bobot berdasarkan jarak
+    const RESOLUTION = 2; // Skip pixels for performance (1 = full, 2 = half, etc)
+    
+    for (let py = 0; py < imgHeight; py += RESOLUTION) {
+      for (let px = 0; px < imgWidth; px += RESOLUTION) {
+        let weightSum = 0;
+        let valueSum = 0;
+        let minDist = Infinity;
+        
+        // Hitung pengaruh dari SEMUA sensor
+        for (const sensor of sensors) {
+          const dx = px - sensor.px;
+          const dy = py - sensor.py;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          // Track jarak terdekat untuk alpha calculation
+          if (dist < minDist) minDist = dist;
+          
+          // IDW: weight = 1 / distance^power
+          // Tambah epsilon untuk avoid division by zero saat tepat di sensor
+          const epsilon = 1;
+          const weight = 1 / Math.pow(dist + epsilon, IDW_POWER);
+          
+          weightSum += weight;
+          valueSum += weight * sensor.intensity;
+        }
+        
+        // Calculate final intensity (weighted average)
+        const intensity = valueSum / weightSum;
+        const color = interpolateColor(intensity);
+        
+        // Alpha: fade di edges berdasarkan jarak ke sensor terdekat
+        // radiusPx berfungsi sebagai "max influence distance" untuk alpha
+        const radiusPx = Math.abs(
+          this._map.latLngToContainerPoint([0, this.options.radius]).x -
+          this._map.latLngToContainerPoint([0, 0]).x
+        );
+        
+        // Alpha: 1.0 di dekat sensor, fade ke 0 di luar radius
+        let alpha;
+        if (minDist < radiusPx * 0.5) {
+          // Fully opaque near sensors
+          alpha = this.options.opacity;
+        } else if (minDist < radiusPx) {
+          // Gradient fade
+          const fadeProgress = (minDist - radiusPx * 0.5) / (radiusPx * 0.5);
+          alpha = this.options.opacity * (1 - fadeProgress * 0.5);
+        } else {
+          // Outside radius - partial fade but don't disappear
+          const fadeProgress = Math.min(1, (minDist - radiusPx) / radiusPx);
+          alpha = this.options.opacity * (0.5 - fadeProgress * 0.3);
+        }
+        
+        // Minimum alpha to ensure some color everywhere
+        alpha = Math.max(alpha, 0.15);
+        
+        // Fill pixels (with resolution)
+        for (let ry = 0; ry < RESOLUTION && py + ry < imgHeight; ry++) {
+          for (let rx = 0; rx < RESOLUTION && px + rx < imgWidth; rx++) {
+            const idx = ((py + ry) * imgWidth + (px + rx)) * 4;
+            data[idx] = color.r;
+            data[idx + 1] = color.g;
+            data[idx + 2] = color.b;
+            data[idx + 3] = Math.round(alpha * 255);
+          }
+        }
+      }
+    }
+    
+    // Put image data onto canvas
+    ctx.putImageData(imageData, imgLeft, imgTop);
+  },
+});
+
+function drawCustomHeatmap(sensorData) {
+  if (customHeatLayer) {
+    customHeatLayer.setData(sensorData);
+  } else {
+    customHeatLayer = new CanvasHeatmapLayer(sensorData, {
+      opacity: 0.65,
+      radius: HEATMAP_RADIUS,
+    });
+    customHeatLayer.addTo(map);
+  }
 }
 
 function initMap() {
@@ -291,6 +549,20 @@ function clipHeatmapToBounds() {
 function updateHeatmap() {
   if (!map || !props.sensorData) return;
 
+  // Custom canvas heatmap implementation
+  if (USE_CUSTOM_HEATMAP) {
+    const sensorData = props.sensorData.filter(
+      (sensor) => nodeLocations[sensor.node_id]
+    );
+    
+    if (sensorData.length > 0) {
+      drawCustomHeatmap(sensorData);
+      drawMarkers();
+    }
+    return;
+  }
+
+  // Original leaflet.heat implementation (kept as backup)
   const heatData = props.sensorData
     .filter((sensor) => nodeLocations[sensor.node_id])
     .map((sensor) => {
@@ -417,11 +689,28 @@ watch(
             :class="activeParameter === 'temperature'
               ? 'param-active'
               : 'param-inactive'"
+            @click="activeParameter = 'temperature'"
           >
-            Suhu
+            Temperature
           </button>
-          <button class="param-btn param-inactive">Kelembapan</button>
-          <button class="param-btn param-inactive">Cahaya</button>
+          <button
+            class="param-btn"
+            :class="activeParameter === 'humidity'
+              ? 'param-active'
+              : 'param-inactive'"
+            @click="activeParameter = 'humidity'"
+          >
+            Humidity
+          </button>
+          <button
+            class="param-btn"
+            :class="activeParameter === 'lux'
+              ? 'param-active'
+              : 'param-inactive'"
+            @click="activeParameter = 'lux'"
+          >
+            Lux
+          </button>
         </div>
 
       </div>
@@ -435,21 +724,24 @@ watch(
   font-size: 0.875rem;
   border-bottom-left-radius: 0.375rem;
   border-bottom-right-radius: 0.375rem;
-  border-width: 1px;
+  border: none;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
 }
 
 .param-active {
   background-color: #ffffff;
   color: #4b5563;
-  border-color: #e5e7eb;
 }
 
 .param-inactive {
   background-color: #e5e7eb;
   color: #4b5563;
-  border-color: #d1d5db;
-  cursor: not-allowed;
+}
+
+.param-inactive:hover {
+  background-color: #d1d5db;
+  color: #374151;
 }
 
 /* LEGEND */
@@ -566,5 +858,17 @@ watch(
 
 .node-popup .leaflet-popup-tip {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Popup untuk node atas - panah mengarah ke atas */
+.popup-bottom.leaflet-popup .leaflet-popup-tip-container {
+  top: -1px !important;
+  bottom: auto !important;
+  margin-top: 0 !important;
+  transform: rotate(180deg) !important;
+}
+
+.popup-bottom.leaflet-popup .leaflet-popup-content-wrapper {
+  margin-top: 13px;
 }
 </style>
