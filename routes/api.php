@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\OtaController;
 use App\Http\Controllers\ExportController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,4 +34,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/export-sensor', [ExportController::class, 'sensor']);
     Route::post('/export-camera', [ExportController::class, 'camera']);
+    
+    // OTA Firmware update check endpoint
+    Route::get('/get-file/{nodeId}', [OtaController::class, 'getFirmwareInfo']);
+    
+    // OTA Firmware upload endpoint
+    Route::post('/files', [OtaController::class, 'uploadFirmware']);
 });
