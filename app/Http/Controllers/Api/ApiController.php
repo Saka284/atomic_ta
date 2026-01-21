@@ -22,6 +22,7 @@ class ApiController extends Controller
             'temperature' => 'required|numeric',
             'humidity' => 'required|numeric',
             'light_intensity' => 'required|numeric',
+            'rssi' => 'nullable|numeric',
             'recorded_at' => 'required|date',
         ]);
 
@@ -51,8 +52,10 @@ class ApiController extends Controller
 
         $now = now()->toDateTimeString();
 
-        $data = collect(['temperature', 'humidity', 'light_intensity'])->map(function ($type) use ($validated, $now, $sensors) {
-            $formattedType = str_replace('_', ' ', ucwords($type, '_'));
+        $data = collect(['temperature', 'humidity', 'light_intensity', 'rssi'])->map(function ($type) use ($validated, $now, $sensors) {
+            $formattedType = ($type === 'rssi')
+                ? 'RSSI'
+                : str_replace('_', ' ', ucwords($type, '_'));
 
             $sensor = $sensors->firstWhere('name', $formattedType);
 
@@ -431,7 +434,8 @@ class ApiController extends Controller
             DB::raw('TIME(sensor_data.recorded_at) as time'),
             DB::raw('MAX(CASE WHEN sensors.name = "Temperature" THEN sensor_data.value END) as temperature'),
             DB::raw('MAX(CASE WHEN sensors.name = "Humidity" THEN sensor_data.value END) as humidity'),
-            DB::raw('MAX(CASE WHEN sensors.name = "Light Intensity" THEN sensor_data.value END) as light_intensity')
+            DB::raw('MAX(CASE WHEN sensors.name = "Light Intensity" THEN sensor_data.value END) as light_intensity'),
+            DB::raw('MAX(CASE WHEN sensors.name = "RSSI" THEN sensor_data.value END) as rssi')
         )
             ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
             ->join('greenhouses', 'greenhouses.id', '=', 'sensors.gh_id')
@@ -508,7 +512,10 @@ class ApiController extends Controller
 
     public function getControlling()
     {
-        $data = Greenhouse::with('sensor')->get();
+        $data = Greenhouse::with(['sensor' => function ($query) {
+            $query->whereNotIn('name', ['RSSI']);
+        }])->get();
+        
         return response()->json([
             'success' => true,
             'data' => $data
