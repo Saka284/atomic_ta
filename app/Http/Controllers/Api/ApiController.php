@@ -93,7 +93,8 @@ class ApiController extends Controller
             'gh_id' => 'required|exists:greenhouses,id',
             'isFoggy' => 'required|boolean',
             'recorded_at' => 'required|date',
-            'image' => 'required|string' // base64
+            'image' => 'required|string', // base64,
+            'fog_percentage' => 'nullable|numeric'
         ]);
 
         if ($validator->fails()) {
@@ -187,6 +188,7 @@ class ApiController extends Controller
                 'isFoggy' => $validated['isFoggy'],
                 'recorded_at' => $validated['recorded_at'],
                 'image' => $imageData,
+                'fog_percentage' => $request->fog_percentage ?? null,
             ]);
 
             return response()->json([
@@ -472,7 +474,7 @@ class ApiController extends Controller
             ->get()
             ->map(function ($camera) {
                 $camera->recorded_at = Carbon::parse($camera->recorded_at)->format('d/m/Y h:i:s');
-
+                $camera->image = url($camera->image);
                 $camera->status = $camera->isFoggy ?
                     'Berkabut' : 'Tidak Berkabut';
                 return $camera;

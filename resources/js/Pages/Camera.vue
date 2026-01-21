@@ -69,6 +69,17 @@ const columnDefs = ref([
         flex: 1,
     },
     {
+        headerName: "Akurasi Kabut",
+        field: "fog_percentage",
+        sortable: true,
+        resizable: true,
+        flex: 1,
+        cellClass: "text-center",
+        cellRenderer: (params) => {
+            return params.value ? `${params.value}%` : '-';
+        }
+    },
+    {
         headerName: "Status",
         field: "status",
         sortable: true,
@@ -394,17 +405,21 @@ const onRowSelected = (event, gh_id) => {
                         :key="greenhouse.id"
                         class="bg-white overflow-hidden shadow-sm rounded-lg p-4 w-full"
                     >
-                        <div
-                            class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4"
-                        >
+                        <div class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4">
+                            <div class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4">
                             <p class="text-lg font-semibold leading-tight">
                                 Camera {{ greenhouse.name }}
                             </p>
-                            <p
-                                class="text-sm text-gray-500 italic leading-tight"
-                            >
-                                {{ rowImageMap[greenhouse.id]?.recorded_at }}
-                            </p>
+                            
+                            <div class="flex flex-col items-end">
+                                
+                                <div v-if="rowImageMap[greenhouse.id]?.fog_percentage" 
+                                    class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm">
+                                    <span class="text-xs font-bold">
+                                        Akurasi: {{ rowImageMap[greenhouse.id]?.fog_percentage }}%
+                                    </span>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="flex flex-col gap-4 w-full">
