@@ -58,20 +58,20 @@ defineProps(["titlePage"]);
                     Monitoring
                 </BreezeNavLink>
                 <BreezeNavLink
-                    :href="route('table')"
-                    :active="route().current('table')"
-                    :icon="'fas fa-table'"
-                    class="justify-center"
-                >
-                    Table
-                </BreezeNavLink>
-                <BreezeNavLink
                     :href="route('heatmap')"
                     :active="route().current('heatmap')"
                     :icon="'fas fa-map-marked-alt'" 
                     class="justify-center"
                 >
                     Heatmap
+                </BreezeNavLink>
+                <BreezeNavLink
+                    :href="route('table')"
+                    :active="route().current('table')"
+                    :icon="'fas fa-table'"
+                    class="justify-center"
+                >
+                    Table
                 </BreezeNavLink>
                 <BreezeNavLink
                     :href="route('camera')"
