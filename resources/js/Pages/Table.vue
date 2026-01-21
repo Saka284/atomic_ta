@@ -56,6 +56,11 @@ const columnDefs = ref([
         field: "light_intensity",
         filter: "agNumberColumnFilter",
     },
+    {
+        headerName: "RSSI (dBm)",
+        field: "rssi",
+        filter: "agNumberColumnFilter",
+    },
 ]);
 const defaultColDef = ref({
     flex: 1,

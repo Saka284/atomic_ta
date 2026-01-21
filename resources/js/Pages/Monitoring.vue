@@ -69,6 +69,16 @@ const getChartColor = (sensorName) => {
     );
 };
 
+// Static gauge scale based on sensor type
+const getGaugeScale = (sensorName) => {
+    const scales = {
+        Temperature: { min: 0, max: 40 },
+        Humidity: { min: 0, max: 100 },
+        "Light Intensity": { min: 0, max: 65535 },
+    };
+    return scales[sensorName] || { min: 0, max: 100 };
+};
+
 const populateData = () => {
     gaugeData.forEach((gauge) => {
         if (!data.value[gauge.gh_id]) {
@@ -498,8 +508,8 @@ watch(activeTab, async (newTab) => {
                                 :value="
                                     data[activeTab]?.gauge?.[sensor.sensor_id]
                                 "
-                                :thd_min="sensor.threshold_min"
-                                :thd_max="sensor.threshold_max"
+                                :thd_min="getGaugeScale(sensor.name).min"
+                                :thd_max="getGaugeScale(sensor.name).max"
                                 :id="sensor.sensor_id"
                             />
                             <p v-else class="text-center text-gray-500">
