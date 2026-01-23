@@ -21,11 +21,12 @@
  * - WATCHERS: Memantau perubahan parameter/data untuk update heatmap
  */
 
-import { onMounted, ref, watch, computed } from "vue";
+import { onMounted, onUnmounted, ref, watch, computed } from "vue";
 import { Head } from "@inertiajs/inertia-vue3";
 import { Inertia } from "@inertiajs/inertia";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import Tabs from "@/Components/Tabs.vue";
+import DigitalClock from "@/Components/DigitalClock.vue";
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -60,6 +61,12 @@ const props = defineProps({
     type: Object,
     default: () => ({ min: 20000, max: 50000 }),
   },
+  
+  // Latest data timestamp per greenhouse
+  latestData: {
+    type: Array,
+    default: () => [],
+  },
 });
 
 // ===============================
@@ -68,7 +75,18 @@ const props = defineProps({
 const activeGH = ref(props.activeGhId);           // Greenhouse yang dipilih
 const activeParameter = ref("temperature");       // Parameter aktif (temperature/humidity/lux)
 const mapContainer = ref(null);                   // Reference ke container div untuk Leaflet
-const showLegend = ref(false);                    // Toggle legend di mobile
+let autoRefreshInterval = null;                   // Interval untuk auto-refresh
+
+// ===============================
+// AUTO-REFRESH INTERVAL (30 detik)
+// ===============================
+const AUTO_REFRESH_SECONDS = 30;
+
+// Computed: Latest data time untuk greenhouse aktif
+const currentLatestTime = computed(() => {
+  const latestItem = props.latestData.find(item => item.gh_id === activeGH.value);
+  return latestItem?.latest_time || '-';
+});
 
 // ===============================
 // KONFIGURASI GREENHOUSE
@@ -79,7 +97,7 @@ const greenhouseConfig = {
   1: {
     width: 1024,
     height: 450,
-    image: '/images/greenhouse_plan.png',
+    image: '/images/greenhouse_plan.webp',
     // Node positions: { node_id: [y, x] }
     nodeLocations: {
       1: [420, 150],   // Bawah kiri
@@ -89,18 +107,20 @@ const greenhouseConfig = {
       5: [420, 950],   // Bawah kanan
     },
   },
-  // GH 2 - Portrait/square layout (sesuaikan ukuran dengan gambar sebenarnya)
+  // GH 2 - Landscape layout (640x500 based on actual image dimensions)
   2: {
-    width: 1768,        // Sesuaikan dengan ukuran gambar GH 2
-    height: 1792,       // Sesuaikan dengan ukuran gambar GH 2
-    image: '/images/greenhouse_plan2.png',
-    // Node positions
+    width: 640,
+    height: 500,
+    image: '/images/greenhouse_plan2.webp',
+    // Node positions: { node_id: [y, x] } - disesuaikan dengan lokasi sensor di gambar
+    // y dari atas ke bawah (0 = atas, 500 = bawah)
+    // x dari kiri ke kanan (0 = kiri, 640 = kanan)
     nodeLocations: {
-      1: [50, 50],     
-      2: [50, 320],
-      3: [265, 160],
-      4: [265, 480],
-      5: [480, 50],
+      6: [175, 561],     // Atas kiri (area pertama)
+      7: [175, 159],     // Atas kanan (area kedua)
+      8: [325, 65],    // Tengah kiri
+      9: [325, 438],    // Tengah kanan
+      10: [405, 278],    // Bawah tengah (dekat Gateway)
     },
   },
 };
@@ -132,8 +152,17 @@ const parameterConfig = {
 // Otomatis berubah saat activeParameter berubah
 // ===============================
 
-// Config untuk parameter yang sedang aktif
-const currentConfig = computed(() => parameterConfig[activeParameter.value]);
+// Config untuk parameter yang sedang aktif - MENGGUNAKAN THRESHOLD sebagai min/max legend
+const currentConfig = computed(() => {
+  const baseConfig = parameterConfig[activeParameter.value];
+  const thresholds = currentThresholds.value;
+  
+  return {
+    ...baseConfig,
+    min: thresholds.min,  // Override dengan threshold min
+    max: thresholds.max,  // Override dengan threshold max
+  };
+});
 
 // Threshold (min/max) untuk parameter aktif - dari database
 const currentThresholds = computed(() => {
@@ -149,76 +178,25 @@ const currentSensorData = computed(() => {
   return props.luxData;
 });
 
-// Simbol unit untuk label (° untuk suhu, % untuk humidity, kosong untuk lux)
-const unitSymbol = computed(() => {
-  if (activeParameter.value === 'temperature') return '°';
-  if (activeParameter.value === 'humidity') return '%';
-  return '';
-});
+
 
 // ===============================
-// POSISI THRESHOLD DI LEGEND (dalam persen)
-// Menghitung posisi garis threshold di legend bar
-// 0% = nilai minimum, 100% = nilai maximum
-// ===============================
-const thresholdMinPosition = computed(() => {
-  const scaleMin = currentConfig.value.min;
-  const scaleMax = currentConfig.value.max;
-  // Rumus: (nilai - min) / (max - min) * 100
-  const pos = ((currentThresholds.value.min - scaleMin) / (scaleMax - scaleMin)) * 100;
-  return Math.min(Math.max(pos, 0), 100); // Clamp antara 0-100
-});
-
-const thresholdMaxPosition = computed(() => {
-  const scaleMin = currentConfig.value.min;
-  const scaleMax = currentConfig.value.max;
-  const pos = ((currentThresholds.value.max - scaleMin) / (scaleMax - scaleMin)) * 100;
-  return Math.min(Math.max(pos, 0), 100);
-});
-
-// ===============================
-// COMPUTED: DYNAMIC LEGEND GRADIENT STYLE
-// Solid di luar range threshold, gradient di antara min-max
+// COMPUTED: LEGEND GRADIENT STYLE
+// Gradient langsung dari threshold min ke max (skala sudah = threshold)
 // ===============================
 const legendGradientStyle = computed(() => {
-  const minPos = thresholdMinPosition.value;
-  const maxPos = thresholdMaxPosition.value;
-  
-  // Warna solid untuk area di luar threshold
-  const coldColor = "#2563eb"; // Biru - di bawah min threshold
-  const hotColor = "#dc2626";  // Merah - di atas max threshold
-  
-  // Gradient colors untuk area di antara threshold
+  // Gradient colors - langsung dari 0% ke 100% karena skala = threshold
   const gradientColors = [
-    { pos: 0, color: "#2563eb" },   // Biru
+    { pos: 0, color: "#2563eb" },    // Biru (Aman)
     { pos: 0.15, color: "#3b82f6" }, // Biru terang
-    { pos: 0.3, color: "#06b6d4" },  // Cyan
-    { pos: 0.45, color: "#facc15" }, // Kuning
+    { pos: 0.3, color: "#06b6d4" },  // Cyan (Normal)
+    { pos: 0.45, color: "#facc15" }, // Kuning (Waspada)
     { pos: 0.6, color: "#fb923c" },  // Orange
     { pos: 0.8, color: "#ef4444" },  // Merah
-    { pos: 1, color: "#dc2626" },    // Merah gelap
+    { pos: 1, color: "#dc2626" },    // Merah gelap (Kritis)
   ];
   
-  // Build gradient stops
-  const stops = [];
-  
-  // Area solid di bawah min threshold (warna hijau solid)
-  if (minPos > 0) {
-    stops.push(`${coldColor} 0%`);
-    stops.push(`${coldColor} ${minPos}%`);
-  }
-  
-  // Area gradient di antara min dan max threshold
-  gradientColors.forEach(({ pos, color }) => {
-    const actualPos = minPos + pos * (maxPos - minPos);
-    stops.push(`${color} ${actualPos}%`);
-  });
-  
-  // Area solid di atas max threshold (warna merah solid)
-  if (maxPos < 100) {
-    stops.push(`${hotColor} ${maxPos}%`);
-    stops.push(`${hotColor} 100%`);
-  }
+  const stops = gradientColors.map(({ pos, color }) => `${color} ${pos * 100}%`);
   
   return {
     background: `linear-gradient(to top, ${stops.join(", ")})`
@@ -227,12 +205,6 @@ const legendGradientStyle = computed(() => {
 
 // Horizontal gradient untuk mobile legend
 const legendGradientStyleHorizontal = computed(() => {
-  const minPos = thresholdMinPosition.value;
-  const maxPos = thresholdMaxPosition.value;
-  
-  const coldColor = "#2563eb";
-  const hotColor = "#dc2626";
-  
   const gradientColors = [
     { pos: 0, color: "#2563eb" },
     { pos: 0.15, color: "#3b82f6" },
@@ -243,22 +215,7 @@ const legendGradientStyleHorizontal = computed(() => {
     { pos: 1, color: "#dc2626" },
   ];
   
-  const stops = [];
-  
-  if (minPos > 0) {
-    stops.push(`${coldColor} 0%`);
-    stops.push(`${coldColor} ${minPos}%`);
-  }
-  
-  gradientColors.forEach(({ pos, color }) => {
-    const actualPos = minPos + pos * (maxPos - minPos);
-    stops.push(`${color} ${actualPos}%`);
-  });
-  
-  if (maxPos < 100) {
-    stops.push(`${hotColor} ${maxPos}%`);
-    stops.push(`${hotColor} 100%`);
-  }
+  const stops = gradientColors.map(({ pos, color }) => `${color} ${pos * 100}%`);
   
   return {
     background: `linear-gradient(to right, ${stops.join(", ")})`
@@ -297,27 +254,58 @@ function normalizeValue(value) {
 // ===============================
 /**
  * Menentukan status dan warna marker berdasarkan nilai sensor
- * Status dibagi menjadi 4 zona berdasarkan threshold:
- * - Aman: 0% - 25% dari range (biru)
- * - Normal: 25% - 50% dari range (cyan)  
- * - Waspada: 50% - 100% dari range (kuning)
- * - Kritis: di atas threshold max (merah)
+ * Menggunakan gradient yang SAMA dengan heatmap dan legend untuk konsistensi
+ * Warna dihitung berdasarkan posisi normalized value di gradient
  */
 function getStatus(value) {
   const val = parseFloat(value);
   const thresholds = currentThresholds.value;
   const range = thresholds.max - thresholds.min;
   
-  // Hitung batas tiap zona
-  const safeLimit = thresholds.min + range * 0.25;    // 25% dari range
-  const normalLimit = thresholds.min + range * 0.5;   // 50% dari range
-  const warningLimit = thresholds.max;                // 100% = threshold max
+  // Normalisasi nilai: 0 = min, 1 = max
+  let normalized = (val - thresholds.min) / range;
+  normalized = Math.max(0, Math.min(1, normalized)); // Clamp 0-1
   
-  // Return status dengan warna yang sesuai
-  if (val <= safeLimit) return { text: "Aman", color: "#2563eb" };     // Biru
-  if (val <= normalLimit) return { text: "Normal", color: "#06b6d4" }; // Cyan
-  if (val <= warningLimit) return { text: "Waspada", color: "#facc15" }; // Kuning
-  return { text: "Kritis", color: "#ef4444" };                          // Merah
+  // Gradient colors SAMA dengan heatmap dan legend
+  const gradientColors = [
+    { stop: 0.0, r: 37, g: 99, b: 235 },    // #2563eb - Biru (Aman)
+    { stop: 0.15, r: 59, g: 130, b: 246 },  // #3b82f6 - Biru terang
+    { stop: 0.3, r: 6, g: 182, b: 212 },    // #06b6d4 - Cyan (Normal)
+    { stop: 0.45, r: 250, g: 204, b: 21 },  // #facc15 - Kuning (Waspada)
+    { stop: 0.6, r: 251, g: 146, b: 60 },   // #fb923c - Orange
+    { stop: 0.8, r: 239, g: 68, b: 68 },    // #ef4444 - Merah
+    { stop: 1.0, r: 220, g: 38, b: 38 },    // #dc2626 - Merah gelap (Kritis)
+  ];
+  
+  // Interpolasi warna berdasarkan normalized value
+  let lower = gradientColors[0];
+  let upper = gradientColors[gradientColors.length - 1];
+  
+  for (let i = 0; i < gradientColors.length - 1; i++) {
+    if (normalized >= gradientColors[i].stop && normalized <= gradientColors[i + 1].stop) {
+      lower = gradientColors[i];
+      upper = gradientColors[i + 1];
+      break;
+    }
+  }
+  
+  const rangeStop = upper.stop - lower.stop;
+  const t = rangeStop === 0 ? 0 : (normalized - lower.stop) / rangeStop;
+  
+  const r = Math.round(lower.r + (upper.r - lower.r) * t);
+  const g = Math.round(lower.g + (upper.g - lower.g) * t);
+  const b = Math.round(lower.b + (upper.b - lower.b) * t);
+  
+  const color = `rgb(${r}, ${g}, ${b})`;
+  
+  // Tentukan text status berdasarkan zona
+  let text;
+  if (normalized <= 0.3) text = "Aman";
+  else if (normalized <= 0.5) text = "Normal";
+  else if (normalized <= 1) text = "Waspada";
+  else text = "Kritis";
+  
+  return { text, color };
 }
 
 // ===============================
@@ -426,13 +414,15 @@ const HEATMAP_RADIUS = 300;
  * - stop: posisi di gradient (0 = nilai min, 1 = nilai max)
  * - r, g, b: komponen warna RGB
  */
+// HARUS SAMA dengan legend gradient untuk konsistensi warna!
 const heatmapGradientColors = [
-  { stop: 0.0, r: 37, g: 99, b: 235 },   // #2563eb - Aman (biru)
-  { stop: 0.35, r: 6, g: 182, b: 212 },  // #06b6d4 - Normal (cyan)
-  { stop: 0.65, r: 250, g: 204, b: 21 }, // #facc15 - Waspada (kuning)
-  { stop: 1.0, r: 251, g: 146, b: 60 },  // #fb923c - Mendekati max (orange)
-  { stop: 1.25, r: 239, g: 68, b: 68 },  // #ef4444 - Kritis (merah)
-  { stop: 1.5, r: 220, g: 38, b: 38 },   // #dc2626 - Sangat Kritis (merah gelap)
+  { stop: 0.0, r: 37, g: 99, b: 235 },    // #2563eb - Biru (Aman)
+  { stop: 0.15, r: 59, g: 130, b: 246 },  // #3b82f6 - Biru terang
+  { stop: 0.3, r: 6, g: 182, b: 212 },    // #06b6d4 - Cyan (Normal)
+  { stop: 0.45, r: 250, g: 204, b: 21 },  // #facc15 - Kuning (Waspada)
+  { stop: 0.6, r: 251, g: 146, b: 60 },   // #fb923c - Orange
+  { stop: 0.8, r: 239, g: 68, b: 68 },    // #ef4444 - Merah
+  { stop: 1.0, r: 220, g: 38, b: 38 },    // #dc2626 - Merah gelap (Kritis)
 ];
 
 function interpolateColor(value) {
@@ -660,20 +650,40 @@ function drawCustomHeatmap(sensorData) {
 // Variable untuk menyimpan image overlay agar bisa di-update
 let imageOverlay = null;
 
+// Helper function untuk mendapatkan zoom optimal berdasarkan greenhouse
+function getOptimalZoomSettings() {
+  const isMobile = window.innerWidth < 768;
+  
+  // GH 2 punya rasio aspek yang berbeda (640x500 = lebih square)
+  // GH 1 punya rasio lebih landscape (1024x450)
+  if (activeGH.value === 2) {
+    // GH 2: gambar lebih square, butuh zoom berbeda
+    return {
+      minZoom: isMobile ? -0.75 : 0,
+      fitMaxZoom: isMobile ? 0.4 : 0.5,
+      padding: isMobile ? [5, 5] : [20, 20]
+    };
+  } else {
+    // GH 1: gambar landscape
+    return {
+      minZoom: isMobile ? -1 : -0.5,
+      fitMaxZoom: isMobile ? 0 : -0.5,
+      padding: [5, 5]
+    };
+  }
+}
+
 function initMap() {
   const bounds = [
     [0, 0],
     [IMAGE_HEIGHT.value, IMAGE_WIDTH.value],
   ];
 
-  // Responsive minZoom: mobile lebih zoom out, desktop pas
-  const isMobile = window.innerWidth < 768;
-  const minZoomValue = isMobile ? -1 : -0.5;
-  const fitMaxZoom = isMobile ? 0 : -0.5; // Batasi zoom awal
+  const zoomSettings = getOptimalZoomSettings();
 
   map = L.map(mapContainer.value, {
     crs: L.CRS.Simple,
-    minZoom: minZoomValue,
+    minZoom: zoomSettings.minZoom,
     maxZoom: 2,
     zoomControl: true,
     attributionControl: false,
@@ -682,8 +692,8 @@ function initMap() {
   // Image overlay dengan bounds - menggunakan gambar sesuai greenhouse aktif
   imageOverlay = L.imageOverlay(currentGreenhouseImage.value, bounds).addTo(map);
   
-  // Fit ke bounds gambar - maxZoom mencegah zoom terlalu jauh
-  map.fitBounds(bounds, { padding: [5, 5], maxZoom: fitMaxZoom });
+  // Fit ke bounds gambar dengan zoom optimal
+  map.fitBounds(bounds, { padding: zoomSettings.padding, maxZoom: zoomSettings.fitMaxZoom });
   
   // Batasi panning agar tidak terlalu jauh dari gambar
   map.setMaxBounds([
@@ -739,12 +749,43 @@ function updateHeatmap() {
 }
 
 // ===============================
+// AUTO-REFRESH FUNCTIONS
+// ===============================
+function startAutoRefresh() {
+  // Clear existing interval if any
+  stopAutoRefresh();
+  
+  // Set new interval
+  autoRefreshInterval = setInterval(() => {
+    // Refresh data dari server via Inertia tanpa full page reload
+    Inertia.get(route("heatmap"), { gh_id: activeGH.value }, { 
+      preserveState: true,
+      preserveScroll: true,
+      only: ['temperatureData', 'humidityData', 'luxData', 'latestData']
+    });
+  }, AUTO_REFRESH_SECONDS * 1000);
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshInterval) {
+    clearInterval(autoRefreshInterval);
+    autoRefreshInterval = null;
+  }
+}
+
+// ===============================
 // LIFECYCLE HOOKS
 // ===============================
 
-// Saat komponen di-mount, inisialisasi Leaflet map
+// Saat komponen di-mount, inisialisasi Leaflet map dan auto-refresh
 onMounted(() => {
   initMap();
+  startAutoRefresh();
+});
+
+// Saat komponen di-unmount, hentikan auto-refresh
+onUnmounted(() => {
+  stopAutoRefresh();
 });
 
 // ===============================
@@ -769,12 +810,17 @@ watch(activeGH, (newGhId) => {
     map.removeLayer(imageOverlay);
     imageOverlay = L.imageOverlay(currentGreenhouseImage.value, bounds).addTo(map);
     
-    // Update map bounds dan fit ke gambar baru
+    // Update map bounds dan fit ke gambar baru dengan zoom optimal
+    const zoomSettings = getOptimalZoomSettings();
+    
+    // Update minZoom sesuai greenhouse
+    map.setMinZoom(zoomSettings.minZoom);
+    
     map.setMaxBounds([
       [-20, -20],
       [IMAGE_HEIGHT.value + 20, IMAGE_WIDTH.value + 20],
     ]);
-    map.fitBounds(bounds, { padding: [5, 5] });
+    map.fitBounds(bounds, { padding: zoomSettings.padding, maxZoom: zoomSettings.fitMaxZoom });
     
     // Pindahkan image ke belakang agar heatmap tetap di atas
     imageOverlay.bringToBack();
@@ -822,6 +868,20 @@ watch(
           v-model="activeGH"
         />
 
+        <!-- INFO CARD: Time & Latest Data (sama seperti Monitoring) -->
+        <div class="bg-white overflow-hidden shadow-sm rounded-lg p-4 mt-3">
+          <div class="flex flex-col w-full">
+            <div class="flex justify-between">
+              <p>Time</p>
+              <DigitalClock />
+            </div>
+            <div class="flex justify-between">
+              <p>Latest Data</p>
+              <p>{{ currentLatestTime }}</p>
+            </div>
+          </div>
+        </div>
+
         <!-- MAP + LEGEND -->
         <div class="heatmap-layout">
 
@@ -842,20 +902,7 @@ watch(
                 <span class="edge-label">Aman</span>
               </div>
               
-              <div class="legend-mobile-bar" :style="legendGradientStyleHorizontal">
-                <div 
-                  class="mobile-threshold mobile-threshold-min"
-                  :style="{ left: thresholdMinPosition + '%' }"
-                >
-                  <span class="mobile-threshold-label">{{ currentThresholds.min }}{{ unitSymbol }}</span>
-                </div>
-                <div 
-                  class="mobile-threshold mobile-threshold-max"
-                  :style="{ left: thresholdMaxPosition + '%' }"
-                >
-                  <span class="mobile-threshold-label">{{ currentThresholds.max }}{{ unitSymbol }}</span>
-                </div>
-              </div>
+              <div class="legend-mobile-bar" :style="legendGradientStyleHorizontal"></div>
               
               <div class="legend-mobile-edge">
                 <span class="edge-value">{{ currentConfig.max }}</span>
@@ -871,25 +918,9 @@ watch(
             </p>
 
             <div class="legend-desktop-content">
-              <!-- Legend Bar with Threshold Lines -->
+              <!-- Legend Bar (skala langsung dari threshold min ke max) -->
               <div class="legend-bar-container">
                 <div class="legend-bar" :style="legendGradientStyle"></div>
-                
-                <!-- Threshold Max Line -->
-                <div 
-                  class="threshold-line threshold-max"
-                  :style="{ bottom: thresholdMaxPosition + '%' }"
-                >
-                  <span class="threshold-label">Max: {{ currentThresholds.max }}{{ unitSymbol }}</span>
-                </div>
-                
-                <!-- Threshold Min Line -->
-                <div 
-                  class="threshold-line threshold-min"
-                  :style="{ bottom: thresholdMinPosition + '%' }"
-                >
-                  <span class="threshold-label">Min: {{ currentThresholds.min }}{{ unitSymbol }}</span>
-                </div>
               </div>
               
               <!-- Scale Labels (dynamic) -->
@@ -902,17 +933,6 @@ watch(
               </div>
             </div>
             
-            <!-- Legend Info -->
-            <div class="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="w-4 h-0.5 bg-red-500"></span>
-                <span>Batas Maks</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="w-4 h-0.5 bg-blue-500"></span>
-                <span>Batas Min</span>
-              </div>
-            </div>
           </div>
 
         </div>
@@ -954,6 +974,7 @@ watch(
 </template>
 
 <style scoped>
+
 /* ===========================
    LAYOUT - RESPONSIVE
    =========================== */
@@ -1080,48 +1101,6 @@ watch(
   border-radius: 8px;
 }
 
-.mobile-threshold {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 3px;
-  border-radius: 2px;
-  transform: translateX(-50%);
-}
-
-.mobile-threshold-min {
-  background-color: #3b82f6;
-  box-shadow: 0 0 3px rgba(59, 130, 246, 0.5);
-}
-
-.mobile-threshold-max {
-  background-color: #ef4444;
-  box-shadow: 0 0 3px rgba(239, 68, 68, 0.5);
-}
-
-.mobile-threshold-label {
-  position: absolute;
-  left: 50%;
-  top: 100%;
-  transform: translateX(-50%);
-  margin-top: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  padding: 2px 4px;
-  border-radius: 3px;
-  background: white;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-}
-
-.mobile-threshold-min .mobile-threshold-label {
-  color: #3b82f6;
-}
-
-.mobile-threshold-max .mobile-threshold-label {
-  color: #ef4444;
-}
-
 /* ===========================
    LEGEND DESKTOP (Vertical)
    =========================== */
@@ -1149,7 +1128,7 @@ watch(
 }
 
 /* ===========================
-   LEGEND BAR & THRESHOLD (Desktop)
+   LEGEND BAR (Desktop)
    =========================== */
 .legend-bar-container {
   position: relative;
@@ -1160,50 +1139,6 @@ watch(
   width: 22px;
   height: 100%;
   border-radius: 12px;
-}
-
-.threshold-line {
-  position: absolute;
-  left: -8px;
-  right: -8px;
-  height: 3px;
-  border-radius: 2px;
-  z-index: 10;
-}
-
-.threshold-line.threshold-max {
-  background-color: #ef4444;
-  box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
-}
-
-.threshold-line.threshold-min {
-  background-color: #3b82f6;
-  box-shadow: 0 0 4px rgba(59, 130, 246, 0.5);
-}
-
-.threshold-label {
-  position: absolute;
-  left: 100%;
-  top: 50%;
-  transform: translateY(-50%);
-  margin-left: 8px;
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: white;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.threshold-max .threshold-label {
-  color: #ef4444;
-  border: 1px solid #fecaca;
-}
-
-.threshold-min .threshold-label {
-  color: #3b82f6;
-  border: 1px solid #bfdbfe;
 }
 
 .legend-labels {
@@ -1343,4 +1278,20 @@ watch(
 .popup-bottom.leaflet-popup .leaflet-popup-content-wrapper {
   margin-top: 13px;
 }
+
+/* Turunkan z-index Leaflet controls agar tidak muncul di atas sidebar mobile */
+.leaflet-control-container,
+.leaflet-control-container .leaflet-top,
+.leaflet-control-container .leaflet-left,
+.leaflet-control-container .leaflet-right,
+.leaflet-control-container .leaflet-bottom,
+.leaflet-top.leaflet-left,
+.leaflet-top.leaflet-right,
+.leaflet-control-zoom,
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out,
+.leaflet-control {
+  z-index: 500 !important;
+}
 </style>
+

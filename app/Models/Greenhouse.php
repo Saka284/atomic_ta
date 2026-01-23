@@ -13,4 +13,9 @@ class Greenhouse extends Model
     {
         return $this->hasMany(Sensor::class, 'gh_id');
     }
+
+    public function schedules()
+    {
+        return $this->hasMany(Schedule::class, 'gh_id');
+    }
 }

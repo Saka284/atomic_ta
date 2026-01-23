@@ -13,10 +13,17 @@ defineProps(["titlePage"]);
 
 <template>
     <div class="flex min-h-screen bg-gray-100 relative">
+        <!-- Backdrop overlay untuk mobile (tutup saat klik di luar sidebar) -->
+        <div 
+            v-if="isSidebarOpen"
+            @click="isSidebarOpen = false"
+            class="fixed inset-0 bg-black bg-opacity-50 z-[999] sm:hidden"
+        ></div>
+
         <!-- Sidebar -->
         <aside
             :class="[
-                'w-64 bg-white border-r border-gray-200 transform transition-transform z-50 min-h-screen fixed sm:relative',
+                'w-64 bg-white border-r border-gray-200 transform transition-transform z-[1000] min-h-screen fixed sm:relative',
                 isSidebarOpen ? 'translate-x-0' : '-translate-x-64',
                 'sm:translate-x-0',
             ]"

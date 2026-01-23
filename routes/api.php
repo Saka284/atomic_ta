@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\OtaController;
+use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\ExportController;
 use Illuminate\Support\Facades\Route;
 
@@ -40,4 +41,12 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // OTA Firmware upload endpoint
     Route::post('/files', [OtaController::class, 'uploadFirmware']);
+
+    // Schedule API routes for Web
+    Route::get('/schedules', [ScheduleController::class, 'getSchedulesForWeb']);
+    Route::post('/schedules', [ScheduleController::class, 'saveSchedules']);
+
+    // Schedule API route for Gateway
+    Route::post('/gateway/schedule', [ScheduleController::class, 'getSchedule']);
 });
+
