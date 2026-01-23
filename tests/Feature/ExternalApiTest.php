@@ -48,6 +48,7 @@ class ExternalApiTest extends TestCase
             'temperature' => 25.5,
             'humidity' => 60,
             'light_intensity' => 1000,
+            'rssi' => -60,
             'recorded_at' => now()->toDateTimeString(),
         ]);
 
