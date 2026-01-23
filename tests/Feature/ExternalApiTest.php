@@ -28,7 +28,7 @@ class ExternalApiTest extends TestCase
         
         // Seed Master Data needed for FK checks
         Greenhouse::create(['id' => 1, 'name' => 'GH 1']);
-        Sensor::create(['id' => 1, 'gh_id' => 1, 'name' => 'DHT22']);
+        Sensor::create(['id' => 1, 'gh_id' => 1, 'name' => 'SHT30']);
     }
 
     /**
