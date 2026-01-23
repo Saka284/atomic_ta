@@ -140,6 +140,21 @@ class PageController extends Controller
         $greenhouses = Greenhouse::select('id', 'name')->get();
 
         // ===============================
+        // GET LATEST DATA TIME FOR EACH GREENHOUSE
+        // ===============================
+        $latestDataTime = SensorData::select(
+            'sensors.gh_id',
+            DB::raw('MAX(sensor_data.recorded_at) as latest_time')
+        )
+            ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
+            ->groupBy('sensors.gh_id')
+            ->get()
+            ->map(function ($item) {
+                $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
+                return $item;
+            });
+
+        // ===============================
         // GET THRESHOLD DATA FROM SENSORS TABLE
         // ===============================
         $tempThresholdData = Sensor::where('gh_id', $gh_id)
@@ -160,6 +175,7 @@ class PageController extends Controller
             'luxData' => $luxData,
             'greenhouses' => $greenhouses,
             'activeGhId' => (int) $gh_id,
+            'latestData' => $latestDataTime,
             'temperatureThresholds' => [
                 'min' => $tempThresholdData->threshold_min ?? 25,
                 'max' => $tempThresholdData->threshold_max ?? 35,
