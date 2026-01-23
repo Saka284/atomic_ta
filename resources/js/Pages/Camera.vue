@@ -406,7 +406,6 @@ const onRowSelected = (event, gh_id) => {
                         class="bg-white overflow-hidden shadow-sm rounded-lg p-4 w-full"
                     >
                         <div class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4">
-                            <div class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4">
                             <p class="text-lg font-semibold leading-tight">
                                 Camera {{ greenhouse.name }}
                             </p>
