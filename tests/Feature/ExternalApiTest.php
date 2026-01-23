@@ -15,8 +15,7 @@ class ExternalApiTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected $user;
-    protected $token;
+    protected $greenhouse;
 
     protected function setUp(): void
     {
@@ -27,8 +26,13 @@ class ExternalApiTest extends TestCase
         $this->token = $this->user->createToken('test-token')->plainTextToken;
         
         // Seed Master Data needed for FK checks
-        Greenhouse::create(['id' => 1, 'name' => 'GH 1']);
-        Sensor::create(['id' => 1, 'gh_id' => 1, 'name' => 'SHT30']);
+        $this->greenhouse = Greenhouse::create(['name' => 'GH 1']);
+        
+        // Controller expects specific sensor names
+        Sensor::create(['gh_id' => $this->greenhouse->id, 'name' => 'Temperature']);
+        Sensor::create(['gh_id' => $this->greenhouse->id, 'name' => 'Humidity']);
+        Sensor::create(['gh_id' => $this->greenhouse->id, 'name' => 'Light Intensity']);
+        Sensor::create(['gh_id' => $this->greenhouse->id, 'name' => 'RSSI']);
     }
 
     /**
@@ -39,17 +43,19 @@ class ExternalApiTest extends TestCase
         $response = $this->withHeaders([
             'Authorization' => 'Bearer ' . $this->token,
         ])->postJson('/api/sensor', [
-            'gh_id' => 1,
-            'sensor_id' => 1,
-            'value' => 25.5,
+            'gh_id' => $this->greenhouse->id,
+            'node_id' => 1,
+            'temperature' => 25.5,
+            'humidity' => 60,
+            'light_intensity' => 1000,
+            'recorded_at' => now()->toDateTimeString(),
         ]);
 
         $response->assertStatus(200)
                  ->assertJson(['success' => true]);
                  
         $this->assertDatabaseHas('sensor_data', [
-            'gh_id' => 1,
-            'sensor_id' => 1,
+            'node_id' => 1,
             'value' => 25.5
         ]);
     }
@@ -60,21 +66,20 @@ class ExternalApiTest extends TestCase
     public function test_camera_upload()
     {
         Storage::fake('public');
-        $file = UploadedFile::fake()->image('snapshot.jpg');
+        // Simple base64 image 1x1 pixel jpg
+        $base64Image = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
 
         $response = $this->withHeaders([
             'Authorization' => 'Bearer ' . $this->token,
         ])->postJson('/api/camera', [
-            'gh_id' => 1,
-            'image' => $file,
+            'gh_id' => $this->greenhouse->id,
+            'isFoggy' => false,
+            'recorded_at' => now()->toDateTimeString(),
+            'image' => $base64Image,
         ]);
 
         $response->assertStatus(200)
                  ->assertJson(['success' => true]);
-
-        // Verify storage
-        // Note: Actual path might depend on Controller implementation, adjusting commonly used path
-        // $this->assertTrue(count(Storage::disk('public')->allFiles('camera')) > 0);
     }
 
     /**
@@ -95,7 +100,7 @@ class ExternalApiTest extends TestCase
     public function test_save_schedules()
     {
         $payload = [
-            "gh_id" => 1,
+            "gh_id" => $this->greenhouse->id,
             "schedules" => [
                 [
                     "enabled" => true,
@@ -118,7 +123,7 @@ class ExternalApiTest extends TestCase
                  ->assertJson(['success' => true]);
 
         $this->assertDatabaseHas('schedules', [
-            'gh_id' => 1,
+            'gh_id' => $this->greenhouse->id,
             'start_time' => '08:00:00',
             'relay_exhaust' => 'threshold'
         ]);
@@ -131,7 +136,7 @@ class ExternalApiTest extends TestCase
     {
         // Create a schedule first
         \App\Models\Schedule::create([
-            'gh_id' => 1,
+            'gh_id' => $this->greenhouse->id,
             'enabled' => true,
             'start_time' => '08:00:00',
             'end_time' => '12:00:00',
@@ -143,13 +148,13 @@ class ExternalApiTest extends TestCase
         $response = $this->withHeaders([
             'Authorization' => 'Bearer ' . $this->token,
         ])->postJson('/api/gateway/schedule', [
-            'gh_id' => 1
+            'gh_id' => $this->greenhouse->id
         ]);
 
         $response->assertStatus(200)
                  ->assertJson([
                      'success' => true,
-                     'gh_id' => 1
+                     'gh_id' => $this->greenhouse->id
                  ]);
         
         // Structure check
