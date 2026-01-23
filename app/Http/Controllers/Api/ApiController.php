@@ -62,7 +62,7 @@ class ApiController extends Controller
             return [
                 'sensor_id' => $sensor->id,
                 'node_id' => $validated['node_id'],
-                'value' => $validated[$type],
+                'value' => $validated[$type] ?? null,
                 'recorded_at' => $validated['recorded_at'],
                 'created_at' => $now,
                 'updated_at' => $now,
