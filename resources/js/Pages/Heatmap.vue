@@ -34,33 +34,26 @@ import "leaflet/dist/leaflet.css";
 // ===============================
 // PROPS DARI CONTROLLER
 // Data yang dikirim dari PageController@heatmap
+// OPTIMIZED: Semua data greenhouse di-preload sekaligus
 // ===============================
 const props = defineProps({
-  // Data sensor per parameter (array of {node_id, value})
-  temperatureData: Array,
-  humidityData: Array,
-  luxData: Array,
+  // Data sensor per greenhouse: { gh_id: { temperature, humidity, lux } }
+  sensorDataByGh: {
+    type: Object,
+    default: () => ({}),
+  },
+  
+  // Thresholds per greenhouse: { gh_id: { temperature, humidity, lux } }
+  thresholdsByGh: {
+    type: Object,
+    default: () => ({}),
+  },
   
   // Daftar greenhouse untuk switch tab
   greenhouses: Array,
   
-  // ID greenhouse yang sedang aktif
+  // ID greenhouse yang sedang aktif (initial value dari URL)
   activeGhId: Number,
-  
-  // Threshold min-max untuk menentukan warna/status
-  // Diambil dari tabel sensors di database
-  temperatureThresholds: {
-    type: Object,
-    default: () => ({ min: 25, max: 35 }),
-  },
-  humidityThresholds: {
-    type: Object,
-    default: () => ({ min: 50, max: 80 }),
-  },
-  luxThresholds: {
-    type: Object,
-    default: () => ({ min: 20000, max: 50000 }),
-  },
   
   // Latest data timestamp per greenhouse
   latestData: {
@@ -165,17 +158,25 @@ const currentConfig = computed(() => {
 });
 
 // Threshold (min/max) untuk parameter aktif - dari database
+// OPTIMIZED: Mengambil dari thresholdsByGh berdasarkan activeGH
 const currentThresholds = computed(() => {
-  if (activeParameter.value === 'temperature') return props.temperatureThresholds;
-  if (activeParameter.value === 'humidity') return props.humidityThresholds;
-  return props.luxThresholds;
+  const ghThresholds = props.thresholdsByGh[activeGH.value];
+  if (!ghThresholds) return { min: 25, max: 35 }; // fallback
+  
+  if (activeParameter.value === 'temperature') return ghThresholds.temperature || { min: 25, max: 35 };
+  if (activeParameter.value === 'humidity') return ghThresholds.humidity || { min: 50, max: 80 };
+  return ghThresholds.lux || { min: 20000, max: 50000 };
 });
 
 // Data sensor untuk parameter aktif
+// OPTIMIZED: Mengambil dari sensorDataByGh berdasarkan activeGH
 const currentSensorData = computed(() => {
-  if (activeParameter.value === 'temperature') return props.temperatureData;
-  if (activeParameter.value === 'humidity') return props.humidityData;
-  return props.luxData;
+  const ghData = props.sensorDataByGh[activeGH.value];
+  if (!ghData) return [];
+  
+  if (activeParameter.value === 'temperature') return ghData.temperature || [];
+  if (activeParameter.value === 'humidity') return ghData.humidity || [];
+  return ghData.lux || [];
 });
 
 
@@ -758,10 +759,11 @@ function startAutoRefresh() {
   // Set new interval
   autoRefreshInterval = setInterval(() => {
     // Refresh data dari server via Inertia tanpa full page reload
-    Inertia.get(route("heatmap"), { gh_id: activeGH.value }, { 
+    // OPTIMIZED: Tidak perlu gh_id karena server sekarang mengirim semua data greenhouse
+    Inertia.get(route("heatmap"), {}, { 
       preserveState: true,
       preserveScroll: true,
-      only: ['temperatureData', 'humidityData', 'luxData', 'latestData']
+      only: ['sensorDataByGh', 'thresholdsByGh', 'latestData']
     });
   }, AUTO_REFRESH_SECONDS * 1000);
 }
@@ -793,11 +795,9 @@ onUnmounted(() => {
 // ===============================
 
 // Watch 1: Saat user switch greenhouse
-// Request data baru dari server dan update image overlay
+// OPTIMIZED: Tidak perlu request ke server! Data sudah di-preload.
+// Cukup update map overlay dan re-render heatmap dengan data yang sudah ada.
 watch(activeGH, (newGhId) => {
-  // Request data baru dari server via Inertia
-  Inertia.get(route("heatmap"), { gh_id: newGhId }, { preserveState: true });
-  
   // Update image overlay dan bounds ke greenhouse yang baru
   if (imageOverlay && map) {
     // Bounds baru sesuai dimensi gambar greenhouse yang dipilih
@@ -830,6 +830,9 @@ watch(activeGH, (newGhId) => {
       map.removeLayer(customHeatLayer);
       customHeatLayer = null;
     }
+    
+    // OPTIMIZED: Update heatmap langsung dengan data yang sudah ada
+    updateHeatmap();
   }
 });
 
@@ -839,10 +842,10 @@ watch(activeParameter, () => {
   updateHeatmap();
 });
 
-// Watch 3: Saat data dari server berubah
-// Deep watch untuk mendeteksi perubahan di dalam array
+// Watch 3: Saat data dari server berubah (auto-refresh)
+// OPTIMIZED: Watch sensorDataByGh karena struktur data baru
 watch(
-  [() => props.temperatureData, () => props.humidityData, () => props.luxData],
+  () => props.sensorDataByGh,
   () => {
     updateHeatmap();
   },

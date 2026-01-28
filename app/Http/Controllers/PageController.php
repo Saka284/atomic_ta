@@ -73,122 +73,199 @@ class PageController extends Controller
 
     public function heatmap(Request $request)
     {
-        $gh_id = $request->input('gh_id', 1);
+        $activeGhId = $request->input('gh_id', 1);
 
         // ===============================
-        // HELPER FUNCTION: Query data sensor terbaru per node
-        // Mengambil nilai terbaru dari setiap node_id untuk sensor tertentu
+        // GET ALL GREENHOUSES (cached)
         // ===============================
-        $getLatestSensorData = function ($sensorName) use ($gh_id) {
-            return SensorData::select('sensor_data.node_id', 'sensor_data.value', 'sensor_data.recorded_at')
+        $greenhouses = Cache::remember('greenhouses', 3600, function () {
+            return Greenhouse::select('id', 'name')->get();
+        });
+        $ghIds = $greenhouses->pluck('id')->toArray();
+
+        // ===============================
+        // SUPER OPTIMIZED: Single query untuk semua sensor data
+        // Menggunakan approach yang lebih efisien daripada subquery per node
+        // ===============================
+        $sensorDataByGh = Cache::remember('heatmap_sensor_data', 60, function () use ($ghIds) {
+            // Single query: ambil data terbaru per (gh_id, sensor_name, node_id)
+            $allData = DB::select("
+                SELECT 
+                    s.gh_id,
+                    s.name as sensor_name,
+                    sd.node_id,
+                    sd.value
+                FROM sensor_data sd
+                INNER JOIN sensors s ON s.id = sd.sensor_id
+                WHERE sd.id IN (
+                    SELECT MAX(sd2.id)
+                    FROM sensor_data sd2
+                    INNER JOIN sensors s2 ON s2.id = sd2.sensor_id
+                    WHERE s2.gh_id IN (" . implode(',', $ghIds) . ")
+                    GROUP BY sd2.sensor_id, sd2.node_id
+                )
+            ");
+
+            // Transform ke struktur yang dibutuhkan frontend
+            $result = [];
+            foreach ($ghIds as $ghId) {
+                $result[$ghId] = [
+                    'temperature' => [],
+                    'humidity' => [],
+                    'lux' => [],
+                ];
+            }
+
+            foreach ($allData as $row) {
+                $paramKey = match($row->sensor_name) {
+                    'Temperature' => 'temperature',
+                    'Humidity' => 'humidity',
+                    'Light Intensity' => 'lux',
+                    default => null
+                };
+                
+                if ($paramKey && isset($result[$row->gh_id])) {
+                    $result[$row->gh_id][$paramKey][] = [
+                        'node_id' => $row->node_id,
+                        'value' => $row->value,
+                    ];
+                }
+            }
+
+            // Fallback dummy data jika kosong
+            foreach ($ghIds as $ghId) {
+                $baseNodeId = $ghId === 1 ? 1 : 6;
+                if (empty($result[$ghId]['temperature'])) {
+                    $result[$ghId]['temperature'] = $this->getDummyData($baseNodeId, [20, 25, 30, 35, 40]);
+                }
+                if (empty($result[$ghId]['humidity'])) {
+                    $result[$ghId]['humidity'] = $this->getDummyData($baseNodeId, [45, 55, 65, 75, 85]);
+                }
+                if (empty($result[$ghId]['lux'])) {
+                    $result[$ghId]['lux'] = $this->getDummyData($baseNodeId, [10000, 20000, 35000, 50000, 65000]);
+                }
+            }
+
+            return $result;
+        });
+
+        // ===============================
+        // OPTIMIZED: Query semua thresholds sekaligus dengan caching
+        // ===============================
+        $thresholdsByGh = Cache::remember('heatmap_thresholds', 300, function () use ($ghIds) {
+            $result = [];
+            
+            $sensors = Sensor::whereIn('gh_id', $ghIds)
+                ->whereIn('name', ['Temperature', 'Humidity', 'Light Intensity'])
+                ->get(['gh_id', 'name', 'threshold_min', 'threshold_max']);
+            
+            foreach ($ghIds as $ghId) {
+                $ghSensors = $sensors->where('gh_id', $ghId);
+                
+                $temp = $ghSensors->firstWhere('name', 'Temperature');
+                $humidity = $ghSensors->firstWhere('name', 'Humidity');
+                $lux = $ghSensors->firstWhere('name', 'Light Intensity');
+                
+                $result[$ghId] = [
+                    'temperature' => [
+                        'min' => $temp->threshold_min ?? 25,
+                        'max' => $temp->threshold_max ?? 35,
+                    ],
+                    'humidity' => [
+                        'min' => $humidity->threshold_min ?? 50,
+                        'max' => $humidity->threshold_max ?? 80,
+                    ],
+                    'lux' => [
+                        'min' => $lux->threshold_min ?? 20000,
+                        'max' => $lux->threshold_max ?? 50000,
+                    ],
+                ];
+            }
+            
+            return $result;
+        });
+
+        // ===============================
+        // GET LATEST DATA TIME (cached)
+        // ===============================
+        $latestDataTime = Cache::remember('heatmap_latest_time', 30, function () {
+            return SensorData::select(
+                'sensors.gh_id',
+                DB::raw('MAX(sensor_data.recorded_at) as latest_time')
+            )
                 ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
-                ->where('sensors.gh_id', $gh_id)
-                ->where('sensors.name', $sensorName)
-                ->whereIn('sensor_data.id', function ($query) use ($gh_id, $sensorName) {
-                    // Subquery: ambil ID dengan recorded_at terbaru per node_id
-                    $query->selectRaw('MAX(sd.id)')
-                        ->from('sensor_data as sd')
-                        ->join('sensors as s', 's.id', '=', 'sd.sensor_id')
-                        ->where('s.gh_id', $gh_id)
-                        ->where('s.name', $sensorName)
-                        ->groupBy('sd.node_id');
-                })
-                ->get();
-        };
-
-        // ===============================
-        // QUERY DATA REAL DARI DATABASE
-        // ===============================
-        $temperatureData = $getLatestSensorData('Temperature');
-        $humidityData = $getLatestSensorData('Humidity');
-        $luxData = $getLatestSensorData('Light Intensity');
-
-        // ===============================
-        // FALLBACK: Jika data kosong, gunakan dummy data
-        // (untuk development/testing jika database belum ada data)
-        // ===============================
-        if ($temperatureData->isEmpty()) {
-            $temperatureData = collect([
-                ['node_id' => 1, 'value' => 20],
-                ['node_id' => 2, 'value' => 25],
-                ['node_id' => 3, 'value' => 30],
-                ['node_id' => 4, 'value' => 35],
-                ['node_id' => 5, 'value' => 40],
-            ]);
-        }
-
-        if ($humidityData->isEmpty()) {
-            $humidityData = collect([
-                ['node_id' => 1, 'value' => 45],
-                ['node_id' => 2, 'value' => 55],
-                ['node_id' => 3, 'value' => 65],
-                ['node_id' => 4, 'value' => 75],
-                ['node_id' => 5, 'value' => 85],
-            ]);
-        }
-
-        if ($luxData->isEmpty()) {
-            $luxData = collect([
-                ['node_id' => 1, 'value' => 10000],
-                ['node_id' => 2, 'value' => 20000],
-                ['node_id' => 3, 'value' => 35000],
-                ['node_id' => 4, 'value' => 50000],
-                ['node_id' => 5, 'value' => 65000],
-            ]);
-        }
-
-        $greenhouses = Greenhouse::select('id', 'name')->get();
-
-        // ===============================
-        // GET LATEST DATA TIME FOR EACH GREENHOUSE
-        // ===============================
-        $latestDataTime = SensorData::select(
-            'sensors.gh_id',
-            DB::raw('MAX(sensor_data.recorded_at) as latest_time')
-        )
-            ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
-            ->groupBy('sensors.gh_id')
-            ->get()
-            ->map(function ($item) {
-                $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
-                return $item;
-            });
-
-        // ===============================
-        // GET THRESHOLD DATA FROM SENSORS TABLE
-        // ===============================
-        $tempThresholdData = Sensor::where('gh_id', $gh_id)
-            ->where('name', 'Temperature')
-            ->first(['threshold_min', 'threshold_max']);
-
-        $humidityThresholdData = Sensor::where('gh_id', $gh_id)
-            ->where('name', 'Humidity')
-            ->first(['threshold_min', 'threshold_max']);
-
-        $luxThresholdData = Sensor::where('gh_id', $gh_id)
-            ->where('name', 'Light Intensity')
-            ->first(['threshold_min', 'threshold_max']);
+                ->groupBy('sensors.gh_id')
+                ->get()
+                ->map(function ($item) {
+                    $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
+                    return $item;
+                });
+        });
 
         return Inertia::render('Heatmap', [
-            'temperatureData' => $temperatureData,
-            'humidityData' => $humidityData,
-            'luxData' => $luxData,
+            'sensorDataByGh' => $sensorDataByGh,
+            'thresholdsByGh' => $thresholdsByGh,
             'greenhouses' => $greenhouses,
-            'activeGhId' => (int) $gh_id,
+            'activeGhId' => (int) $activeGhId,
             'latestData' => $latestDataTime,
-            'temperatureThresholds' => [
-                'min' => $tempThresholdData->threshold_min ?? 25,
-                'max' => $tempThresholdData->threshold_max ?? 35,
-            ],
-            'humidityThresholds' => [
-                'min' => $humidityThresholdData->threshold_min ?? 50,
-                'max' => $humidityThresholdData->threshold_max ?? 80,
-            ],
-            'luxThresholds' => [
-                'min' => $luxThresholdData->threshold_min ?? 20000,
-                'max' => $luxThresholdData->threshold_max ?? 50000,
-            ],
         ]);
+    }
+
+    /**
+     * Helper: Generate dummy data for development
+     */
+    private function getDummyData($baseNodeId, $values)
+    {
+        return array_map(function ($i) use ($baseNodeId, $values) {
+            return ['node_id' => $baseNodeId + $i, 'value' => $values[$i]];
+        }, range(0, 4));
+    }
+
+    /**
+     * Helper: Get latest sensor data for a specific greenhouse and sensor type
+     */
+    private function getLatestSensorDataForGh($ghId, $sensorName)
+    {
+        $data = SensorData::select('sensor_data.node_id', 'sensor_data.value', 'sensor_data.recorded_at')
+            ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
+            ->where('sensors.gh_id', $ghId)
+            ->where('sensors.name', $sensorName)
+            ->whereIn('sensor_data.id', function ($query) use ($ghId, $sensorName) {
+                $query->selectRaw('MAX(sd.id)')
+                    ->from('sensor_data as sd')
+                    ->join('sensors as s', 's.id', '=', 'sd.sensor_id')
+                    ->where('s.gh_id', $ghId)
+                    ->where('s.name', $sensorName)
+                    ->groupBy('sd.node_id');
+            })
+            ->get();
+
+        // Fallback dummy data jika kosong (untuk development)
+        if ($data->isEmpty()) {
+            $baseNodeId = $ghId === 1 ? 1 : 6;
+            return collect([
+                ['node_id' => $baseNodeId, 'value' => $this->getDummyValue($sensorName, 0)],
+                ['node_id' => $baseNodeId + 1, 'value' => $this->getDummyValue($sensorName, 1)],
+                ['node_id' => $baseNodeId + 2, 'value' => $this->getDummyValue($sensorName, 2)],
+                ['node_id' => $baseNodeId + 3, 'value' => $this->getDummyValue($sensorName, 3)],
+                ['node_id' => $baseNodeId + 4, 'value' => $this->getDummyValue($sensorName, 4)],
+            ]);
+        }
+
+        return $data;
+    }
+
+    /**
+     * Helper: Get dummy value for development/testing
+     */
+    private function getDummyValue($sensorName, $index)
+    {
+        $values = [
+            'Temperature' => [20, 25, 30, 35, 40],
+            'Humidity' => [45, 55, 65, 75, 85],
+            'Light Intensity' => [10000, 20000, 35000, 50000, 65000],
+        ];
+        return $values[$sensorName][$index] ?? 0;
     }
 
 
