@@ -7,6 +7,7 @@ use App\Models\Greenhouse;
 use App\Models\Schedule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
 
 class ScheduleController extends Controller
 {
@@ -50,24 +51,31 @@ class ScheduleController extends Controller
             $query->whereIn('id', $scheduleIds);
         }
 
-        // Get schedules
-        $schedules = $query->orderBy('start_time')
-            ->get()
-            ->map(function ($schedule) {
-                return [
-                    'id' => $schedule->id,
-                    'aktif' => $schedule->enabled ? 1 : 0,
-                    'mulai' => substr($schedule->start_time, 0, 5),
-                    'selesai' => substr($schedule->end_time, 0, 5),
-                    'relay' => $schedule->relay_binary,
-                ];
-            });
+        // Cache Key: schedule_gateway_{gh_id}
+        $cacheKey = "schedule_gateway_{$request->gh_id}";
+        
+        // Cache for 60 seconds (Gateway polling optimization)
+        $response = Cache::remember($cacheKey, 60, function () use ($query, $request) {
+            $schedules = $query->orderBy('start_time')
+                ->get()
+                ->map(function ($schedule) {
+                    return [
+                        'id' => $schedule->id,
+                        'aktif' => $schedule->enabled ? 1 : 0,
+                        'mulai' => substr($schedule->start_time, 0, 5),
+                        'selesai' => substr($schedule->end_time, 0, 5),
+                        'relay' => $schedule->relay_binary,
+                    ];
+                });
 
-        return response()->json([
-            'success' => true,
-            'gh_id' => (int) $request->gh_id,
-            'schedules' => $schedules,
-        ]);
+            return [
+                'success' => true,
+                'gh_id' => (int) $request->gh_id,
+                'schedules' => $schedules,
+            ];
+        });
+
+        return response()->json($response);
     }
 
     /**
@@ -114,6 +122,10 @@ class ScheduleController extends Controller
                 ]);
             }
 
+            // Invalidate Cache for both Gateway and Web
+            Cache::forget("schedule_gateway_{$request->gh_id}");
+            Cache::forget("schedule_web_{$request->gh_id}");
+
             return response()->json([
                 'success' => true,
                 'message' => 'Jadwal berhasil disimpan',
@@ -145,27 +157,34 @@ class ScheduleController extends Controller
             ], 400);
         }
 
-        $schedules = Schedule::where('gh_id', $request->gh_id)
-            ->orderBy('start_time')
-            ->get()
-            ->map(function ($schedule) {
-                return [
-                    'id' => $schedule->id,
-                    'greenhouse_id' => $schedule->gh_id,
-                    'enabled' => $schedule->enabled,
-                    'start_time' => substr($schedule->start_time, 0, 5),
-                    'end_time' => substr($schedule->end_time, 0, 5),
-                    'actuators' => [
-                        'blower' => $schedule->relay_blower,
-                        'exhaust' => $schedule->relay_exhaust,
-                        'dehumidifier' => $schedule->relay_dehumidifier,
-                    ],
-                ];
-            });
+        // Cache Key: schedule_web_{gh_id}
+        $cacheKey = "schedule_web_{$request->gh_id}";
 
-        return response()->json([
-            'success' => true,
-            'schedules' => $schedules,
-        ]);
+        $response = Cache::remember($cacheKey, 60, function () use ($request) {
+            $schedules = Schedule::where('gh_id', $request->gh_id)
+                ->orderBy('start_time')
+                ->get()
+                ->map(function ($schedule) {
+                    return [
+                        'id' => $schedule->id,
+                        'greenhouse_id' => $schedule->gh_id,
+                        'enabled' => $schedule->enabled,
+                        'start_time' => substr($schedule->start_time, 0, 5),
+                        'end_time' => substr($schedule->end_time, 0, 5),
+                        'actuators' => [
+                            'blower' => $schedule->relay_blower,
+                            'exhaust' => $schedule->relay_exhaust,
+                            'dehumidifier' => $schedule->relay_dehumidifier,
+                        ],
+                    ];
+                });
+
+            return [
+                'success' => true,
+                'schedules' => $schedules,
+            ];
+        });
+
+        return response()->json($response);
     }
 }

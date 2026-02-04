@@ -11,7 +11,7 @@ const appName =
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,
-    resolve: (name) => require(`./Pages/${name}.vue`),
+    resolve: (name) => import(`./Pages/${name}.vue`),
     setup({ el, app, props, plugin }) {
         return createApp({ render: () => h(app, props) })
             .use(plugin)

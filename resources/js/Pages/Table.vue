@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, watch } from "vue";
+import { debounce } from "lodash";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import { Head, usePage } from "@inertiajs/inertia-vue3";
 import Tabs from "@/Components/Tabs.vue";
@@ -18,6 +19,7 @@ const toast = useToast();
 const { greenhouses } = usePage().props.value;
 const activeTab = ref(greenhouses[0].id);
 const daterange = ref();
+const selectedNode = ref(""); // New Node Filter
 const isExporting = ref(false);
 
 // column
@@ -68,6 +70,7 @@ const defaultColDef = ref({
     filter: true,
     sortable: true,
     resizable: true,
+    suppressMenu: true, // Cleaner UI
 });
 
 // data
@@ -87,7 +90,19 @@ const fetchData = async () => {
                 `<div class="skeleton-loader">Loading...</div>`
             );
         }
+        
+        // Build Dynamic Query
         const queryData = { gh_id: activeTab.value };
+        
+        if (daterange.value) {
+            queryData.start_date = formatDate(daterange.value[0]);
+            queryData.end_date = formatDate(daterange.value[1]);
+        }
+
+        if (selectedNode.value) {
+            queryData.node_id = selectedNode.value;
+        }
+
         const url = `/api/table-per-gh?dict=` + JSON.stringify(queryData);
 
         const response = await fetch(url, {
@@ -116,12 +131,17 @@ const fetchData = async () => {
     }
 };
 
+// Debounced version of fetchData
+const debouncedFetchData = debounce(() => {
+    fetchData();
+}, 300);
+
 onMounted(() => {
     fetchData();
 });
 
-watch(activeTab, () => {
-    fetchData();
+watch([activeTab, daterange, selectedNode], () => {
+    debouncedFetchData();
 });
 
 const onGridReady = (params) => {
@@ -143,9 +163,13 @@ const exportData = async () => {
 
     const payload = {
         gh_id: activeTab.value,
-        start_date: daterange.value[0],
-        end_date: daterange.value[1],
+        start_date: formatDate(daterange.value[0]),
+        end_date: formatDate(daterange.value[1]),
     };
+
+    if (selectedNode.value) {
+        payload.node_id = selectedNode.value;
+    }
 
     try {
         const response = await axios.post("/api/export-sensor", payload, {
@@ -195,36 +219,54 @@ const exportData = async () => {
                 />
 
                 <div class="bg-white shadow-sm rounded-lg p-4">
-                    <div
-                        class="flex flex-col md:flex-row justify-center md:justify-between mb-6"
-                    >
-                        <h3 class="text-2xl text-center md:text-left">
+                    <div class="flex flex-col md:flex-row justify-center md:justify-between mb-6 gap-4">
+                        <h3 class="text-2xl text-center md:text-left self-center">
                             Monitoring Data
                         </h3>
-                        <div class="flex gap-2 items-center">
-                            <p>Export</p>
-                            <VueDatePicker
-                                v-model="daterange"
-                                range
-                                position:right
-                                placeholder="Pick a Date Range"
-                            />
-                            <button
-                                :disabled="isExporting"
-                                @click="exportData"
-                                class="bg-green-500 text-white p-1 rounded"
-                            >
-                                <i
-                                    :class="[
-                                        isExporting
-                                            ? 'fas fa-spinner fa-spin'
-                                            : 'far fa-file-excel',
-                                        ' w-8 h-full py-1.5',
-                                    ]"
-                                ></i>
-                            </button>
+                        
+                        <!-- Filter Controls -->
+                        <div class="flex flex-col gap-3 items-end justify-center bg-gray-50 p-2 rounded-lg border border-gray-100">
+                            
+                            <!-- Date Filter (Global View) -->
+                            <div class="flex items-center gap-2 w-full justify-end">
+                                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Date</span>
+                                <VueDatePicker
+                                    v-model="daterange"
+                                    range
+                                    position:right
+                                    placeholder="Filter by Date"
+                                    class="w-64 shadow-sm"
+                                />
+                            </div>
+
+                            <!-- Node Filter & Export Action -->
+                            <div class="flex gap-2 w-full justify-end items-center">
+                                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Node</span>
+                                <select 
+                                    v-model="selectedNode"
+                                    class="border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 rounded-md shadow-sm h-[38px] w-40 text-sm"
+                                >
+                                    <option value="">All Nodes</option>
+                                    <option v-for="n in 5" :key="n" :value="activeTab == 1 ? n : n+5">
+                                        Node {{ activeTab == 1 ? n : n+5 }}
+                                    </option>
+                                </select>
+                                
+                                <div class="h-8 w-[1px] bg-gray-300 mx-1"></div> <!-- Divider -->
+
+                                <button
+                                    :disabled="isExporting"
+                                    @click="exportData"
+                                    class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded shadow-md h-[38px] flex items-center gap-2 transition-all transform active:scale-95"
+                                    title="Export Current View to Excel"
+                                >
+                                    <i :class="[isExporting ? 'fas fa-spinner fa-spin' : 'fas fa-file-excel']"></i>
+                                    <span class="text-sm font-semibold">Export</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
+                    
                     <!-- AG Grid -->
                     <div class="ag-theme-alpine">
                         <ag-grid-vue
