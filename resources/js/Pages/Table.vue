@@ -2,7 +2,7 @@
 import { ref, onMounted, watch } from "vue";
 import { debounce } from "lodash";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
-import { Head, usePage } from "@inertiajs/inertia-vue3";
+import { Head, usePage } from "@inertiajs/vue3";
 import Tabs from "@/Components/Tabs.vue";
 import { AgGridVue } from "ag-grid-vue3";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
@@ -16,13 +16,15 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 const toast = useToast();
 
-const { greenhouses } = usePage().props.value;
+const { greenhouses, allTableData } = usePage().props;
 const activeTab = ref(greenhouses[0].id);
 const daterange = ref();
-const selectedNode = ref(""); // New Node Filter
+const selectedNode = ref("");
 const isExporting = ref(false);
+const isLoading = ref(false);
 
-// column
+const rowData = ref(allTableData?.[greenhouses[0].id] || []);
+
 const columnDefs = ref([
     {
         headerName: "No",
@@ -70,28 +72,23 @@ const defaultColDef = ref({
     filter: true,
     sortable: true,
     resizable: true,
-    suppressMenu: true, // Cleaner UI
+    suppressHeaderMenuButton: true,
 });
 
-// data
-const rowData = ref([]);
-
-// page
 const paginationPageSize = ref(10);
 const paginationPageSizeSelector = ref([10, 20, 50, 100]);
 
 let gridApi;
 
-// fetch data table
 const fetchData = async () => {
+    if (!daterange.value && !selectedNode.value) {
+        rowData.value = allTableData?.[activeTab.value] || [];
+        return;
+    }
+    
     try {
-        if (gridApi) {
-            gridApi.showLoadingOverlay(
-                `<div class="skeleton-loader">Loading...</div>`
-            );
-        }
+        isLoading.value = true;
         
-        // Build Dynamic Query
         const queryData = { gh_id: activeTab.value };
         
         if (daterange.value) {
@@ -118,29 +115,27 @@ const fetchData = async () => {
             toast.error("Gagal memuat data!");
             console.error("Data format error: Expected array", jsonData);
         }
-
-        if (gridApi) {
-            gridApi.hideOverlay();
-        }
     } catch (error) {
         toast.error("Gagal memuat data!");
         console.error("Fetch error:", error);
-        if (gridApi) {
-            gridApi.hideOverlay();
-        }
+    } finally {
+        isLoading.value = false;
     }
 };
 
-// Debounced version of fetchData
 const debouncedFetchData = debounce(() => {
     fetchData();
 }, 300);
 
-onMounted(() => {
-    fetchData();
+watch(activeTab, () => {
+    if (!daterange.value && !selectedNode.value) {
+        rowData.value = allTableData?.[activeTab.value] || [];
+    } else {
+        debouncedFetchData();
+    }
 });
 
-watch([activeTab, daterange, selectedNode], () => {
+watch([daterange, selectedNode], () => {
     debouncedFetchData();
 });
 
@@ -268,7 +263,14 @@ const exportData = async () => {
                     </div>
                     
                     <!-- AG Grid -->
-                    <div class="ag-theme-alpine">
+                    <div class="ag-theme-alpine relative">
+                        <!-- Loading Skeleton -->
+                        <div v-if="isLoading" class="absolute inset-0 bg-white/80 z-10 flex items-center justify-center">
+                            <div class="flex flex-col items-center gap-3">
+                                <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+                                <span class="text-gray-600 font-medium">Memuat data...</span>
+                            </div>
+                        </div>
                         <ag-grid-vue
                             :rowData="rowData"
                             :columnDefs="columnDefs"
@@ -276,10 +278,9 @@ const exportData = async () => {
                             :pagination="true"
                             :domLayout="'autoHeight'"
                             :paginationPageSize="paginationPageSize"
-                            :paginationPageSizeSelector="
-                                paginationPageSizeSelector
-                            "
+                            :paginationPageSizeSelector="paginationPageSizeSelector"
                             :animateRows="true"
+                            :loading="isLoading"
                             @grid-ready="onGridReady"
                             class="ag-theme-alpine"
                         >

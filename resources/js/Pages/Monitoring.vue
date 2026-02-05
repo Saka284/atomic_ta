@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
-import { Head, usePage } from "@inertiajs/inertia-vue3";
+import { Head, usePage } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import Tabs from "@/Components/Tabs.vue";
 import Dropdown from "@/Components/Dropdown.vue";
@@ -14,7 +14,7 @@ import { useToast } from "vue-toastification";
 
 const toast = useToast();
 
-const { greenhouses, gaugeData, latestData } = usePage().props.value;
+const { greenhouses, gaugeData, latestData } = usePage().props;
 
 const activeTab = ref(greenhouses[0].id);
 const data = ref({});

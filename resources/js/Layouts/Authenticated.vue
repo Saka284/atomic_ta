@@ -4,7 +4,7 @@ import BreezeApplicationLogo from "@/Components/ApplicationLogo.vue";
 import BreezeNavLink from "@/Components/NavLink.vue";
 import BreezeDropdown from "@/Components/Dropdown.vue";
 import BreezeDropdownLink from "@/Components/DropdownLink.vue";
-import { Link } from "@inertiajs/inertia-vue3";
+import { Link } from "@inertiajs/vue3";
 
 const isSidebarOpen = ref(false);
 
@@ -147,7 +147,7 @@ defineProps(["titlePage"]);
                             <button
                                 class="w-full flex justify-between items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
                             >
-                                {{ $page.props.auth.user.name }}
+                                {{ $page.props.auth.user.username }}
                                 <svg
                                     class="h-4 w-4 transition-transform duration-200"
                                     :class="{ 'rotate-180': open }"

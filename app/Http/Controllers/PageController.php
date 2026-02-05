@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CameraData;
 use App\Models\Greenhouse;
+use App\Models\Schedule;
 use App\Models\Sensor;
 use App\Models\SensorData;
 use Illuminate\Http\Request;
@@ -66,7 +67,31 @@ class PageController extends Controller
 
     public function table()
     {
-        return Inertia::render('Table');
+        $allData = [];
+        foreach (Greenhouse::all() as $gh) {
+            $allData[$gh->id] = Cache::remember("table_gh_{$gh->id}", 60, function () use ($gh) {
+                return DB::select("
+                    SELECT 
+                        sd.node_id,
+                        DATE(sd.recorded_at) as date,
+                        TIME(sd.recorded_at) as time,
+                        MAX(CASE WHEN s.name = 'Temperature' THEN sd.value END) as temperature,
+                        MAX(CASE WHEN s.name = 'Humidity' THEN sd.value END) as humidity,
+                        MAX(CASE WHEN s.name = 'Light Intensity' THEN sd.value END) as light_intensity,
+                        MAX(CASE WHEN s.name = 'RSSI' THEN sd.value END) as rssi
+                    FROM sensor_data sd
+                    JOIN sensors s ON s.id = sd.sensor_id
+                    WHERE s.gh_id = ?
+                    GROUP BY sd.node_id, sd.recorded_at
+                    ORDER BY sd.recorded_at DESC
+                    LIMIT 500
+                ", [$gh->id]);
+            });
+        }
+        
+        return Inertia::render('Table', [
+            'allTableData' => $allData
+        ]);
     }
 
     public function heatmap(Request $request)
@@ -201,6 +226,22 @@ class PageController extends Controller
 
     public function controlling()
     {
-        return Inertia::render('Controlling');
+        $controllingData = Cache::remember('controlling_data', 60, function () {
+            return Greenhouse::with(['sensor' => function ($query) {
+                $query->whereNotIn('name', ['RSSI']);
+            }])->get();
+        });
+        
+        $schedules = [];
+        foreach (Greenhouse::all() as $gh) {
+            $schedules[$gh->id] = Cache::remember("schedules_{$gh->id}", 60, function () use ($gh) {
+                return Schedule::where('gh_id', $gh->id)->get();
+            });
+        }
+        
+        return Inertia::render('Controlling', [
+            'initialData' => $controllingData,
+            'initialSchedules' => $schedules
+        ]);
     }
 }
