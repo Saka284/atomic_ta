@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, watch } from "vue";
-import { Head, usePage } from "@inertiajs/inertia-vue3";
+import { Head, usePage } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import VueDatePicker from "@vuepic/vue-datepicker";
 import "@vuepic/vue-datepicker/dist/main.css";
@@ -16,7 +16,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 const toast = useToast();
 
-const { greenhouses, auth, latestData } = usePage().props.value;
+const { greenhouses, auth, latestData } = usePage().props;
 const daterange = ref();
 const isExporting = ref(false);
 const selectedGreenhouse = ref("");

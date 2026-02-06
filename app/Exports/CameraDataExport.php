@@ -20,25 +20,29 @@ class CameraDataExport implements FromCollection, WithHeadings
 
     public function collection()
     {
-        $camera_data = CameraData::whereDate('recorded_at', '>=', $this->start_date)
-            ->whereDate('recorded_at', '<=', $this->end_date)
-            ->when($this->gh_id, function ($q) {
-                $q->where('gh_id', $this->gh_id);
-            })
-            ->orderByDesc('recorded_at')
-            ->get();
+        // Optimization: Raw SQL to bypass Model Hydration
+        $sql = "SELECT gh_id, recorded_at, image, isFoggy FROM camera_data WHERE DATE(recorded_at) >= ? AND DATE(recorded_at) <= ?";
+        $params = [$this->start_date, $this->end_date];
 
-        $data = $camera_data->map(function ($camera) {
+        if ($this->gh_id) {
+            $sql .= " AND gh_id = ?";
+            $params[] = $this->gh_id;
+        }
 
+        $sql .= " ORDER BY recorded_at DESC";
+
+        $results = \Illuminate\Support\Facades\DB::select($sql, $params);
+
+        $data = array_map(function ($row) {
             return [
-                'gh_id' => $camera->gh_id,
-                'recorded_at' => $camera->recorded_at,
-                'image_url' => asset($camera->image) ?? '-',
-                'status' => $camera->isFoggy ? 'Berkabut' : 'Tidak Berkabut',
+                'gh_id' => $row->gh_id,
+                'recorded_at' => $row->recorded_at,
+                'image_url' => asset($row->image) ?? '-',
+                'status' => $row->isFoggy ? 'Berkabut' : 'Tidak Berkabut',
             ];
-        });
+        }, $results);
 
-        return $data;
+        return collect($data);
     }
 
     public function headings(): array

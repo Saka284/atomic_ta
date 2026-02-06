@@ -22,8 +22,7 @@
  */
 
 import { onMounted, onUnmounted, ref, watch, computed } from "vue";
-import { Head } from "@inertiajs/inertia-vue3";
-import { Inertia } from "@inertiajs/inertia";
+import { Head, router } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import Tabs from "@/Components/Tabs.vue";
 import DigitalClock from "@/Components/DigitalClock.vue";
@@ -758,7 +757,7 @@ function startAutoRefresh() {
   // Set new interval
   autoRefreshInterval = setInterval(() => {
     // Refresh data dari server via Inertia tanpa full page reload
-    Inertia.get(route("heatmap"), { gh_id: activeGH.value }, { 
+    router.get(route("heatmap"), { gh_id: activeGH.value }, { 
       preserveState: true,
       preserveScroll: true,
       only: ['temperatureData', 'humidityData', 'luxData', 'latestData']
@@ -796,7 +795,7 @@ onUnmounted(() => {
 // Request data baru dari server dan update image overlay
 watch(activeGH, (newGhId) => {
   // Request data baru dari server via Inertia
-  Inertia.get(route("heatmap"), { gh_id: newGhId }, { preserveState: true });
+  router.get(route("heatmap"), { gh_id: newGhId }, { preserveState: true });
   
   // Update image overlay dan bounds ke greenhouse yang baru
   if (imageOverlay && map) {

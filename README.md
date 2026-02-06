@@ -67,10 +67,27 @@ Jika badge di atas berwarna **Hijau (Passing)**, berarti seluruh kode aman dan s
     ```bash
     cp .env.example .env
     php artisan key:generate
-    php artisan migrate
     ```
 
-4.  **Jalankan Server**
+4.  **Setup Database**
+    ```bash
+    # Buat database MySQL
+    mysql -u root -p -e "CREATE DATABASE atomic_web_local"
+    
+    # Import struktur dan data (jika ada backup)
+    mysql -u root -p atomic_web_local < sql/atomic_backup-01-structure.sql
+    
+    # Import data (opsional - jika ada file backup)
+    Get-ChildItem sql\atomic_backup-*-data.sql | ForEach-Object { mysql -u root -p atomic_web_local -e "source $_" }
+    
+    # Atau jalankan migration jika fresh install
+    php artisan migrate
+    
+    # Populate sensor_snapshots table (WAJIB untuk monitoring page)
+    php artisan db:seed --class=SensorSnapshotSeeder
+    ```
+
+5.  **Jalankan Server**
     ```bash
     php artisan serve
     npm run watch

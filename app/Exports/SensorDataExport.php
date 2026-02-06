@@ -19,48 +19,26 @@ class SensorDataExport implements FromCollection, WithHeadings
 
     public function collection()
     {
-        $sensorData = SensorData::select(
-            'sensor_data.node_id',
-            'sensor_data.recorded_at',
-            'sensors.name as sensor_name',
-            'sensor_data.value'
-        )
-            ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
-            ->join('greenhouses', 'greenhouses.id', '=', 'sensors.gh_id')
-            ->where('greenhouses.id', $this->gh_id)
-            ->whereDate('recorded_at', '>=', $this->start_date)
-            ->whereDate('recorded_at', '<=', $this->end_date)
-            ->orderByDesc('sensor_data.recorded_at')
-            ->get();
+        // Optimization: Raw SQL Pivot
+        // Performs pivoting in Database Engine (C++), avoiding PHP array memory limits
+        $data = \Illuminate\Support\Facades\DB::select("
+            SELECT 
+                sd.node_id,
+                sd.recorded_at,
+                MAX(CASE WHEN s.name = 'Temperature' THEN sd.value END) as temperature,
+                MAX(CASE WHEN s.name = 'Humidity' THEN sd.value END) as humidity,
+                MAX(CASE WHEN s.name = 'Light Intensity' THEN sd.value END) as light_intensity,
+                MAX(CASE WHEN s.name = 'RSSI' THEN sd.value END) as rssi
+            FROM sensor_data sd
+            JOIN sensors s ON s.id = sd.sensor_id
+            WHERE s.gh_id = ? 
+            AND DATE(sd.recorded_at) >= ? 
+            AND DATE(sd.recorded_at) <= ?
+            GROUP BY sd.node_id, sd.recorded_at
+            ORDER BY sd.recorded_at DESC
+        ", [$this->gh_id, $this->start_date, $this->end_date]);
 
-        $groupedData = [];
-
-        foreach ($sensorData as $data) {
-            $key = $data->node_id . '|' . $data->recorded_at;
-
-            if (!isset($groupedData[$key])) {
-                $groupedData[$key] = [
-                    'node_id' => $data->node_id,
-                    'recorded_at' => $data->recorded_at,
-                    'temperature' => null,
-                    'humidity' => null,
-                    'light_intensity' => null,
-                    'rssi' => null,
-                ];
-            }
-
-            if ($data->sensor_name === 'Temperature') {
-                $groupedData[$key]['temperature'] = $data->value;
-            } elseif ($data->sensor_name === 'Humidity') {
-                $groupedData[$key]['humidity'] = $data->value;
-            } elseif ($data->sensor_name === 'Light Intensity') {
-                $groupedData[$key]['light_intensity'] = $data->value;
-            } elseif ($data->sensor_name === 'RSSI') {
-                $groupedData[$key]['rssi'] = $data->value;
-}
-        }
-
-        return collect(array_values($groupedData));
+        return collect($data);
     }
 
     public function headings(): array
