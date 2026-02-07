@@ -45,10 +45,10 @@ const actuators = ref([
 
 // grid
 const gridOptions = ref({
-    columnDefs: [
-        { field: "recorded_at", sortable: true, resizable: true, flex: 1 },
-        { field: "status", sortable: true, resizable: true, flex: 1 },
-    ],
+    defaultColDef: {
+        suppressMovable: true,  // HAPUS fitur drag-and-drop kolom
+        resizable: false,       // HAPUS fitur tarik garis kolom
+    },
     rowSelection: {
         mode: "singleRow",
         checkboxes: false,
@@ -57,6 +57,7 @@ const gridOptions = ref({
     initialState: {
         rowSelection: [],
     },
+    suppressMenuHide: true,
 });
 
 // column
@@ -65,38 +66,30 @@ const columnDefs = ref([
         headerName: "Datetime",
         field: "recorded_at",
         sortable: true,
-        resizable: true,
+        resizable: false,
+        suppressMovable: true,
         flex: 1,
-    },
-    {
-        headerName: "Akurasi Kabut",
-        field: "fog_percentage",
-        sortable: true,
-        resizable: true,
-        flex: 1,
-        cellClass: "text-center",
-        cellRenderer: (params) => {
-            return params.value ? `${params.value}%` : '-';
-        }
+        minWidth: 190,
+        headerClass: "ag-header-center",
     },
     {
         headerName: "Status",
         field: "status",
         sortable: true,
-        resizable: true,
+        resizable: false,
+        suppressMovable: true,
         flex: 1,
+        minWidth: 150,
+        headerClass: "ag-header-center",
         cellClass: "text-center",
         cellRenderer: (params) => {
             const status = params.value || "Unknown";
-
             const statusClasses = {
                 Berkabut: "bg-sky-100 text-sky-600",
                 "Tidak Berkabut": "bg-green-100 text-green-600",
                 Unknown: "bg-gray-100 text-gray-600",
             };
-
-            const badgeClass =
-                statusClasses[status] || "bg-gray-100 text-gray-600";
+            const badgeClass = statusClasses[status] || "bg-gray-100 text-gray-600";
 
             const wrapper = document.createElement("div");
             wrapper.style.display = "flex";
@@ -113,6 +106,20 @@ const columnDefs = ref([
             wrapper.appendChild(div);
             return wrapper;
         },
+    },
+    {
+        headerName: "Akurasi Kabut",
+        field: "fog_percentage",
+        sortable: true,
+        resizable: false,
+        suppressMovable: true,
+        flex: 1,
+        minWidth: 140,
+        headerClass: "ag-header-center",
+        cellClass: "text-center",
+        cellRenderer: (params) => {
+            return params.value ? `${params.value}%` : '-';
+        }
     },
 ]);
 
@@ -227,42 +234,52 @@ const formatDate = (date) => {
 const exportData = async () => {
     isExporting.value = true;
 
+    // 1. Cek tanggal
     if (!daterange.value) {
         toast.warning("Rentang tanggal belum dipilih");
         isExporting.value = false;
         return;
     }
 
+    // 2. Siapkan Payload
     const payload = {
-        start_date: daterange.value[0],
-        end_date: daterange.value[1],
+        start_date: formatDate(daterange.value[0]),
+        end_date: formatDate(daterange.value[1]),
         gh_id: selectedGreenhouse.value,
     };
 
     try {
+        // 3. Tembak Backend
         const response = await axios.post("/api/export-camera", payload, {
-            responseType: "blob",
+            responseType: "blob", // PENTING: Response berupa file binary
         });
 
+        // 4. Proses Download
         const blob = new Blob([response.data], {
-            type: response.headers["content-type"],
+            type: response.headers["content-type"], // Ambil tipe file dari server
         });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `camera_${formatDate(daterange.value[0])}_to_${formatDate(
-            daterange.value[1]
-        )}.xlsx`;
+        
+        // --- PERBAIKAN DI SINI (UBAH JADI .zip) ---
+        a.download = `Laporan_Camera_${payload.start_date}_sd_${payload.end_date}.zip`; 
+        // ------------------------------------------
+
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
 
-        toast.success("Excel berhasil diunduh!");
-
+        toast.success("File ZIP berhasil diunduh!");
         isExporting.value = false;
+        
     } catch (error) {
-        toast.error("Gagal mengunduh file!");
         console.error(error);
+        if (error.response && error.response.status === 404) {
+             toast.error("Tidak ada data pada tanggal tersebut.");
+        } else {
+             toast.error("Gagal mengunduh file!");
+        }
         isExporting.value = false;
     }
 };
@@ -410,15 +427,7 @@ const onRowSelected = (event, gh_id) => {
                                 Camera {{ greenhouse.name }}
                             </p>
                             
-                            <div class="flex flex-col items-end">
-                                
-                                <div v-if="rowImageMap[greenhouse.id]?.fog_percentage" 
-                                    class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm">
-                                    <span class="text-xs font-bold">
-                                        Akurasi: {{ rowImageMap[greenhouse.id]?.fog_percentage }}%
-                                    </span>
-                                </div>
-                            </div>
+                            <div class="flex flex-col items-end"></div>
                         </div>
 
                         <div class="flex flex-col gap-4 w-full">
@@ -540,3 +549,9 @@ const onRowSelected = (event, gh_id) => {
         </div>
     </BreezeAuthenticatedLayout>
 </template>
+
+<style>
+.ag-header-center .ag-header-cell-label {
+    justify-content: center !important;
+}
+</style>

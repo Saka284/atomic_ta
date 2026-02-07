@@ -13,14 +13,12 @@ defineProps(["titlePage"]);
 
 <template>
     <div class="flex min-h-screen bg-gray-100 relative">
-        <!-- Backdrop overlay untuk mobile (tutup saat klik di luar sidebar) -->
         <div 
             v-if="isSidebarOpen"
             @click="isSidebarOpen = false"
             class="fixed inset-0 bg-black bg-opacity-50 z-[999] sm:hidden"
         ></div>
 
-        <!-- Sidebar -->
         <aside
             :class="[
                 'w-64 bg-white border-r border-gray-200 transform transition-transform z-[1000] min-h-screen fixed sm:relative',
@@ -28,7 +26,6 @@ defineProps(["titlePage"]);
                 'sm:translate-x-0',
             ]"
         >
-            <!-- Tombol Close (X) hanya muncul di mobile -->
             <button
                 @click="isSidebarOpen = false"
                 class="absolute top-4 right-4 p-2 rounded-full bg-gray-200 hover:bg-gray-300 sm:hidden"
@@ -99,9 +96,7 @@ defineProps(["titlePage"]);
             </nav>
         </aside>
 
-        <!-- Main Content -->
         <div class="flex-1 flex flex-col w-full">
-            <!-- Navbar -->
             <header
                 class="bg-white shadow h-16 flex items-center px-4 sm:px-6 lg:px-8"
             >
@@ -140,7 +135,6 @@ defineProps(["titlePage"]);
                     {{ titlePage }}
                 </h1>
 
-                <!-- Log Out Button -->
                 <div class="ml-auto">
                     <BreezeDropdown align="right" width="48">
                         <template #trigger="{ open }">
@@ -176,7 +170,6 @@ defineProps(["titlePage"]);
                 </div>
             </header>
 
-            <!-- Page Content -->
             <main class="flex-1 p-6">
                 <slot />
             </main>
