@@ -13,21 +13,25 @@ defineProps(["titlePage"]);
 
 <template>
     <div class="flex min-h-screen bg-gray-100 relative">
-        <!-- Sidebar -->
+        
+        <div 
+            v-if="isSidebarOpen" 
+            @click="isSidebarOpen = false"
+            class="fixed inset-0 bg-black bg-opacity-50 z-[9998] transition-opacity"
+        ></div>
+
         <aside
             :class="[
-                'w-64 bg-white border-r border-gray-200 transform transition-transform z-50 min-h-screen fixed sm:relative',
-                isSidebarOpen ? 'translate-x-0' : '-translate-x-64',
-                'sm:translate-x-0',
+                'fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out z-[9999]',
+                isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
             ]"
         >
-            <!-- Tombol Close (X) hanya muncul di mobile -->
             <button
                 @click="isSidebarOpen = false"
-                class="absolute top-4 right-4 p-2 rounded-full bg-gray-200 hover:bg-gray-300 sm:hidden"
+                class="absolute top-4 right-4 p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600"
             >
                 <svg
-                    class="w-6 h-6 text-gray-600"
+                    class="w-5 h-5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -48,12 +52,13 @@ defineProps(["titlePage"]);
                     Medini
                 </Link>
             </div>
-            <nav class="px-4 py-6 flex flex-col">
+
+            <nav class="px-4 py-6 flex flex-col space-y-2">
                 <BreezeNavLink
                     :href="route('monitoring')"
                     :active="route().current('monitoring')"
                     :icon="'fas fa-chart-bar'"
-                    class="justify-center"
+                    class="justify-start pl-6" 
                 >
                     Monitoring
                 </BreezeNavLink>
@@ -61,7 +66,7 @@ defineProps(["titlePage"]);
                     :href="route('heatmap')"
                     :active="route().current('heatmap')"
                     :icon="'fas fa-map-marked-alt'" 
-                    class="justify-center"
+                    class="justify-start pl-6"
                 >
                     Heatmap
                 </BreezeNavLink>
@@ -69,7 +74,7 @@ defineProps(["titlePage"]);
                     :href="route('table')"
                     :active="route().current('table')"
                     :icon="'fas fa-table'"
-                    class="justify-center"
+                    class="justify-start pl-6"
                 >
                     Table
                 </BreezeNavLink>
@@ -77,7 +82,7 @@ defineProps(["titlePage"]);
                     :href="route('camera')"
                     :active="route().current('camera')"
                     :icon="'fas fa-camera-retro'"
-                    class="justify-center"
+                    class="justify-start pl-6"
                 >
                     Camera
                 </BreezeNavLink>
@@ -85,22 +90,20 @@ defineProps(["titlePage"]);
                     :href="route('controlling')"
                     :active="route().current('controlling')"
                     :icon="'fas fa-sliders-h'"
-                    class="justify-center"
+                    class="justify-start pl-6"
                 >
                     Controlling
                 </BreezeNavLink>
             </nav>
         </aside>
 
-        <!-- Main Content -->
-        <div class="flex-1 flex flex-col w-full">
-            <!-- Navbar -->
+        <div class="flex-1 flex flex-col w-full min-h-screen transition-all duration-300">
             <header
-                class="bg-white shadow h-16 flex items-center px-4 sm:px-6 lg:px-8"
+                class="bg-white shadow h-16 flex items-center px-4 sm:px-6 lg:px-8 sticky top-0 z-30"
             >
                 <button
-                    @click="isSidebarOpen = !isSidebarOpen"
-                    class="sm:hidden text-gray-500 hover:text-gray-700"
+                    @click="isSidebarOpen = true"
+                    class="text-gray-500 hover:text-gray-700 mr-4 focus:outline-none p-2 rounded hover:bg-gray-100"
                 >
                     <svg
                         class="h-6 w-6"
@@ -109,31 +112,18 @@ defineProps(["titlePage"]);
                         viewBox="0 0 24 24"
                     >
                         <path
-                            v-if="!isSidebarOpen"
                             stroke-linecap="round"
                             stroke-linejoin="round"
                             stroke-width="2"
                             d="M4 6h16M4 12h16M4 18h16"
                         />
-                        <path
-                            v-else
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12"
-                        />
                     </svg>
                 </button>
-                <h1
-                    :class="[
-                        'text-2xl font-bold',
-                        !isSidebarOpen ? 'ml-2' : '',
-                    ]"
-                >
+
+                <h1 class="text-xl sm:text-2xl font-bold text-gray-800">
                     {{ titlePage }}
                 </h1>
 
-                <!-- Log Out Button -->
                 <div class="ml-auto">
                     <BreezeDropdown align="right" width="48">
                         <template #trigger="{ open }">
@@ -169,8 +159,7 @@ defineProps(["titlePage"]);
                 </div>
             </header>
 
-            <!-- Page Content -->
-            <main class="flex-1 p-6">
+            <main class="flex-1 p-4 sm:p-6 overflow-y-auto">
                 <slot />
             </main>
         </div>
