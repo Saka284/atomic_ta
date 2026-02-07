@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CameraData;
 use App\Models\Greenhouse;
+use App\Models\Schedule;
 use App\Models\Sensor;
 use App\Models\SensorData;
 use Illuminate\Http\Request;
@@ -16,49 +17,47 @@ class PageController extends Controller
 {
     public function monitoring()
     {
-        $latestDataTime = SensorData::select(
-            DB::raw('(SELECT gh_id FROM sensors WHERE sensors.id = sensor_data.sensor_id) as gh_id'),
-            'sensor_data.sensor_id',
-            DB::raw('MAX(sensor_data.recorded_at) as latest_time')
-        )
-            ->groupBy('sensor_data.sensor_id')
-            ->get()
-            ->map(function ($item) {
-                $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
-                return $item;
-            });
+        // 1. Optimized Raw SQL for Latest Data Time
+        // Leveraging the C++ MySQL Engine for aggregation and joining
+        $latestDataTime = DB::select("
+            SELECT 
+                s.gh_id,
+                ss.sensor_id,
+                MAX(ss.recorded_at) as latest_time
+            FROM sensor_snapshots ss
+            JOIN sensors s ON s.id = ss.sensor_id
+            GROUP BY ss.sensor_id, s.gh_id
+        ");
 
+        // Format dates in PHP (faster than MySQL DATE_FORMAT for large results)
+        foreach ($latestDataTime as $item) {
+            $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
+        }
 
-        $gaugeData = Cache::remember('gaugeData', 60, function () {
-            return SensorData::select(
-                'sensors.gh_id',
-                'sensor_data.sensor_id',
-                'sensors.name',
-                'sensors.threshold_min',
-                'sensors.threshold_max',
-                'sensors.unit',
-                DB::raw('AVG(sensor_data.value) as avg_value')
-            )
-                ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
-                ->join(DB::raw('(SELECT sensor_id, node_id, MAX(recorded_at) as latest_time 
-                                 FROM sensor_data 
-                                 GROUP BY sensor_id, node_id) latest_data'), function ($join) {
-                    $join->on('sensor_data.sensor_id', '=', 'latest_data.sensor_id')
-                        ->on('sensor_data.node_id', '=', 'latest_data.node_id')
-                        ->on('sensor_data.recorded_at', '=', 'latest_data.latest_time');
-                })
-                ->groupBy(
-                    'sensor_data.sensor_id',
-                    'sensors.gh_id',
-                    'sensors.name',
-                    'sensors.threshold_min',
-                    'sensors.threshold_max',
-                    'sensors.unit'
-                )
-                ->orderBy('sensors.id')
-                ->get();
+        // 2. Optimized Gauge Data Query (Snapshot Read - O(1))
+        // Reads from the pre-computed "Materialized View" table
+        $gaugeData = Cache::remember('gaugeData', 5, function () { // Reduced cache time because query is instant
+            return DB::select("
+                SELECT 
+                    s.gh_id,
+                    ss.sensor_id,
+                    s.name,
+                    s.threshold_min,
+                    s.threshold_max,
+                    s.unit,
+                    AVG(ss.value) as avg_value
+                FROM sensor_snapshots ss
+                JOIN sensors s ON s.id = ss.sensor_id
+                GROUP BY 
+                    ss.sensor_id,
+                    s.gh_id,
+                    s.name,
+                    s.threshold_min,
+                    s.threshold_max,
+                    s.unit
+                ORDER BY s.id
+            ");
         });
-
 
         return Inertia::render('Monitoring', [
             'gaugeData' => $gaugeData,
@@ -68,7 +67,31 @@ class PageController extends Controller
 
     public function table()
     {
-        return Inertia::render('Table');
+        $allData = [];
+        foreach (Greenhouse::all() as $gh) {
+            $allData[$gh->id] = Cache::remember("table_gh_{$gh->id}", 60, function () use ($gh) {
+                return DB::select("
+                    SELECT 
+                        sd.node_id,
+                        DATE(sd.recorded_at) as date,
+                        TIME(sd.recorded_at) as time,
+                        MAX(CASE WHEN s.name = 'Temperature' THEN sd.value END) as temperature,
+                        MAX(CASE WHEN s.name = 'Humidity' THEN sd.value END) as humidity,
+                        MAX(CASE WHEN s.name = 'Light Intensity' THEN sd.value END) as light_intensity,
+                        MAX(CASE WHEN s.name = 'RSSI' THEN sd.value END) as rssi
+                    FROM sensor_data sd
+                    JOIN sensors s ON s.id = sd.sensor_id
+                    WHERE s.gh_id = ?
+                    GROUP BY sd.node_id, sd.recorded_at
+                    ORDER BY sd.recorded_at DESC
+                    LIMIT 500
+                ", [$gh->id]);
+            });
+        }
+        
+        return Inertia::render('Table', [
+            'allTableData' => $allData
+        ]);
     }
 
     public function heatmap(Request $request)
@@ -140,6 +163,21 @@ class PageController extends Controller
         $greenhouses = Greenhouse::select('id', 'name')->get();
 
         // ===============================
+        // GET LATEST DATA TIME FOR EACH GREENHOUSE
+        // ===============================
+        $latestDataTime = SensorData::select(
+            'sensors.gh_id',
+            DB::raw('MAX(sensor_data.recorded_at) as latest_time')
+        )
+            ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
+            ->groupBy('sensors.gh_id')
+            ->get()
+            ->map(function ($item) {
+                $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
+                return $item;
+            });
+
+        // ===============================
         // GET THRESHOLD DATA FROM SENSORS TABLE
         // ===============================
         $tempThresholdData = Sensor::where('gh_id', $gh_id)
@@ -160,6 +198,7 @@ class PageController extends Controller
             'luxData' => $luxData,
             'greenhouses' => $greenhouses,
             'activeGhId' => (int) $gh_id,
+            'latestData' => $latestDataTime,
             'temperatureThresholds' => [
                 'min' => $tempThresholdData->threshold_min ?? 25,
                 'max' => $tempThresholdData->threshold_max ?? 35,
@@ -187,6 +226,22 @@ class PageController extends Controller
 
     public function controlling()
     {
-        return Inertia::render('Controlling');
+        $controllingData = Cache::remember('controlling_data', 60, function () {
+            return Greenhouse::with(['sensor' => function ($query) {
+                $query->whereNotIn('name', ['RSSI']);
+            }])->get();
+        });
+        
+        $schedules = [];
+        foreach (Greenhouse::all() as $gh) {
+            $schedules[$gh->id] = Cache::remember("schedules_{$gh->id}", 60, function () use ($gh) {
+                return Schedule::where('gh_id', $gh->id)->get();
+            });
+        }
+        
+        return Inertia::render('Controlling', [
+            'initialData' => $controllingData,
+            'initialSchedules' => $schedules
+        ]);
     }
 }

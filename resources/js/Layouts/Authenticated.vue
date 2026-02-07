@@ -4,7 +4,7 @@ import BreezeApplicationLogo from "@/Components/ApplicationLogo.vue";
 import BreezeNavLink from "@/Components/NavLink.vue";
 import BreezeDropdown from "@/Components/Dropdown.vue";
 import BreezeDropdownLink from "@/Components/DropdownLink.vue";
-import { Link } from "@inertiajs/inertia-vue3";
+import { Link } from "@inertiajs/vue3";
 
 const isSidebarOpen = ref(false);
 
@@ -13,25 +13,25 @@ defineProps(["titlePage"]);
 
 <template>
     <div class="flex min-h-screen bg-gray-100 relative">
-        
         <div 
-            v-if="isSidebarOpen" 
+            v-if="isSidebarOpen"
             @click="isSidebarOpen = false"
-            class="fixed inset-0 bg-black bg-opacity-50 z-[9998] transition-opacity"
+            class="fixed inset-0 bg-black bg-opacity-50 z-[999] sm:hidden"
         ></div>
 
         <aside
             :class="[
-                'fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out z-[9999]',
-                isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                'w-64 bg-white border-r border-gray-200 transform transition-transform z-[1000] min-h-screen fixed sm:relative',
+                isSidebarOpen ? 'translate-x-0' : '-translate-x-64',
+                'sm:translate-x-0',
             ]"
         >
             <button
                 @click="isSidebarOpen = false"
-                class="absolute top-4 right-4 p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600"
+                class="absolute top-4 right-4 p-2 rounded-full bg-gray-200 hover:bg-gray-300 sm:hidden"
             >
                 <svg
-                    class="w-5 h-5"
+                    class="w-6 h-6 text-gray-600"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -52,13 +52,12 @@ defineProps(["titlePage"]);
                     Medini
                 </Link>
             </div>
-
-            <nav class="px-4 py-6 flex flex-col space-y-2">
+            <nav class="px-4 py-6 flex flex-col">
                 <BreezeNavLink
                     :href="route('monitoring')"
                     :active="route().current('monitoring')"
                     :icon="'fas fa-chart-bar'"
-                    class="justify-start pl-6" 
+                    class="justify-center"
                 >
                     Monitoring
                 </BreezeNavLink>
@@ -66,7 +65,7 @@ defineProps(["titlePage"]);
                     :href="route('heatmap')"
                     :active="route().current('heatmap')"
                     :icon="'fas fa-map-marked-alt'" 
-                    class="justify-start pl-6"
+                    class="justify-center"
                 >
                     Heatmap
                 </BreezeNavLink>
@@ -74,7 +73,7 @@ defineProps(["titlePage"]);
                     :href="route('table')"
                     :active="route().current('table')"
                     :icon="'fas fa-table'"
-                    class="justify-start pl-6"
+                    class="justify-center"
                 >
                     Table
                 </BreezeNavLink>
@@ -82,7 +81,7 @@ defineProps(["titlePage"]);
                     :href="route('camera')"
                     :active="route().current('camera')"
                     :icon="'fas fa-camera-retro'"
-                    class="justify-start pl-6"
+                    class="justify-center"
                 >
                     Camera
                 </BreezeNavLink>
@@ -90,20 +89,20 @@ defineProps(["titlePage"]);
                     :href="route('controlling')"
                     :active="route().current('controlling')"
                     :icon="'fas fa-sliders-h'"
-                    class="justify-start pl-6"
+                    class="justify-center"
                 >
                     Controlling
                 </BreezeNavLink>
             </nav>
         </aside>
 
-        <div class="flex-1 flex flex-col w-full min-h-screen transition-all duration-300">
+        <div class="flex-1 flex flex-col w-full">
             <header
-                class="bg-white shadow h-16 flex items-center px-4 sm:px-6 lg:px-8 sticky top-0 z-30"
+                class="bg-white shadow h-16 flex items-center px-4 sm:px-6 lg:px-8"
             >
                 <button
-                    @click="isSidebarOpen = true"
-                    class="text-gray-500 hover:text-gray-700 mr-4 focus:outline-none p-2 rounded hover:bg-gray-100"
+                    @click="isSidebarOpen = !isSidebarOpen"
+                    class="sm:hidden text-gray-500 hover:text-gray-700"
                 >
                     <svg
                         class="h-6 w-6"
@@ -112,15 +111,27 @@ defineProps(["titlePage"]);
                         viewBox="0 0 24 24"
                     >
                         <path
+                            v-if="!isSidebarOpen"
                             stroke-linecap="round"
                             stroke-linejoin="round"
                             stroke-width="2"
                             d="M4 6h16M4 12h16M4 18h16"
                         />
+                        <path
+                            v-else
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                        />
                     </svg>
                 </button>
-
-                <h1 class="text-xl sm:text-2xl font-bold text-gray-800">
+                <h1
+                    :class="[
+                        'text-2xl font-bold',
+                        !isSidebarOpen ? 'ml-2' : '',
+                    ]"
+                >
                     {{ titlePage }}
                 </h1>
 
@@ -130,7 +141,7 @@ defineProps(["titlePage"]);
                             <button
                                 class="w-full flex justify-between items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
                             >
-                                {{ $page.props.auth.user.name }}
+                                {{ $page.props.auth.user.username }}
                                 <svg
                                     class="h-4 w-4 transition-transform duration-200"
                                     :class="{ 'rotate-180': open }"
@@ -159,7 +170,7 @@ defineProps(["titlePage"]);
                 </div>
             </header>
 
-            <main class="flex-1 p-4 sm:p-6 overflow-y-auto">
+            <main class="flex-1 p-6">
                 <slot />
             </main>
         </div>

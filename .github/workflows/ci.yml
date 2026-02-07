@@ -1,0 +1,103 @@
+name: atomic-web-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  laravel-test:
+    name: Laravel API Tests (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php-version: ['8.4']
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: atomic_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php-version }}
+        extensions: mbstring, dom, fileinfo, mysql
+        # coverage: xdebug # Optional: Enable if you want coverage reports
+
+    - name: Copy .env
+      run: |
+        cp .env.example .env
+        sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=mysql/g' .env
+        sed -i 's/DB_HOST=127.0.0.1/DB_HOST=127.0.0.1/g' .env
+        sed -i 's/DB_PORT=3306/DB_PORT=3306/g' .env
+        sed -i 's/DB_DATABASE=laravel/DB_DATABASE=atomic_test/g' .env
+        sed -i 's/DB_USERNAME=root/DB_USERNAME=root/g' .env
+        sed -i 's/DB_PASSWORD=/DB_PASSWORD=root/g' .env
+
+    - name: Get Composer Cache Directory
+      id: composer-cache
+      run: |
+        echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v4
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-composer-
+
+    - name: Install Dependencies
+      run: composer install --prefer-dist --no-progress --no-suggest
+
+    # USEFUL ADDITION: Check for security vulnerabilities in dependencies
+    - name: Security Audit
+      run: composer audit
+      continue-on-error: true # Don't break build, just warn
+
+    - name: Generate Key
+      run: php artisan key:generate
+
+    - name: Run Migrations
+      run: php artisan migrate --force
+
+    - name: Execute Tests
+      run: php artisan test
+
+    # USEFUL ADDITION: Upload logs if tests fail helps debugging
+    - name: Upload API Logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: laravel-logs
+        path: storage/logs
+
+
+  frontend-build:
+    name: Frontend Build (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Build Project
+      run: npm run prod || npm run build

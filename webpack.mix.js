@@ -19,7 +19,8 @@ mix.js("resources/js/app.js", "public/js")
     ])
     .alias({
         "@": "resources/js",
-    });
+    })
+    .extract(); // Extract vendors to vendor.js
 
 if (mix.inProduction()) {
     mix.version();
