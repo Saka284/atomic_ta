@@ -71,6 +71,25 @@ jobs:
     - name: Execute Tests
       run: php artisan test
 
+    - name: Seed Benchmark Data
+      run: php artisan migrate:fresh --seed --seeder=BenchmarkSeeder
+
+    - name: Run Benchmarks
+      run: php artisan bench:endpoints --output=benchmarks/current.json --fail-on-threshold
+
+    - name: Compare Benchmarks
+      env:
+        BENCH_BASE_REF: ${{ github.event.pull_request.base.sha }}
+      run: |
+        BASE_REF=${BENCH_BASE_REF:-origin/main}
+        php scripts/bench_compare.php --current=benchmarks/current.json --baseline-ref="$BASE_REF" --output=benchmarks/compare.json --fail-on-regression
+
+    - name: Upload Benchmark Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmarks
+
     # USEFUL ADDITION: Upload logs if tests fail helps debugging
     - name: Upload API Logs
       if: failure()

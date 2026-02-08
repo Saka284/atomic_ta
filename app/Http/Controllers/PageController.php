@@ -17,22 +17,26 @@ class PageController extends Controller
 {
     public function monitoring()
     {
-        // 1. Optimized Raw SQL for Latest Data Time
-        // Leveraging the C++ MySQL Engine for aggregation and joining
-        $latestDataTime = DB::select("
-            SELECT 
-                s.gh_id,
-                ss.sensor_id,
-                MAX(ss.recorded_at) as latest_time
-            FROM sensor_snapshots ss
-            JOIN sensors s ON s.id = ss.sensor_id
-            GROUP BY ss.sensor_id, s.gh_id
-        ");
+        // 1. Optimized Raw SQL for Latest Data Time (cached)
+        $latestDataTime = Cache::remember('monitoring_latest_time', 10, function () {
+            // Leveraging the C++ MySQL Engine for aggregation and joining
+            $rows = DB::select("
+                SELECT 
+                    s.gh_id,
+                    ss.sensor_id,
+                    MAX(ss.recorded_at) as latest_time
+                FROM sensor_snapshots ss
+                JOIN sensors s ON s.id = ss.sensor_id
+                GROUP BY ss.sensor_id, s.gh_id
+            ");
 
-        // Format dates in PHP (faster than MySQL DATE_FORMAT for large results)
-        foreach ($latestDataTime as $item) {
-            $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
-        }
+            // Format dates in PHP (faster than MySQL DATE_FORMAT for large results)
+            foreach ($rows as $item) {
+                $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
+            }
+
+            return $rows;
+        });
 
         // 2. Optimized Gauge Data Query (Snapshot Read - O(1))
         // Reads from the pre-computed "Materialized View" table
@@ -325,7 +329,9 @@ class PageController extends Controller
 
     public function camera()
     {
-        $latestDataTime = CameraData::latest()->value('recorded_at');
+        $latestDataTime = Cache::remember('camera_latest_time', 10, function () {
+            return CameraData::latest()->value('recorded_at');
+        });
         $formattedTime = $latestDataTime ? Carbon::parse($latestDataTime)->format('d/m/Y H:i:s') : null;
         return Inertia::render('Camera', [
             'latestData' => $formattedTime

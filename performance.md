@@ -16,6 +16,22 @@ Fitur *game-changer* di Inertia v2 adalah **Prefetching**.
 *   **Hasil:** Saat user benar-benar klik, data sudah tersedia. Halaman muncul **INSTAN** (0ms delay percepual).
  
 > "It feels less like a website, and more like a native application."
+
+---
+
+## 📏 Benchmark & Threshold
+
+Benchmark berjalan di CI dan bisa dijalankan lokal untuk semua endpoint penting.
+
+```bash
+php artisan migrate:fresh --seed --seeder=BenchmarkSeeder
+php artisan bench:endpoints --output=benchmarks/current.json --fail-on-threshold
+php scripts/bench_compare.php --current=benchmarks/current.json --baseline=benchmarks/baseline.json
+```
+
+Konfigurasi:
+- `config/bench.php` untuk jumlah iterasi, warmup, dan threshold (p95).
+- Override lewat ENV: `BENCH_ITERATIONS`, `BENCH_WARMUP`, `BENCH_THRESHOLDS`.
  
 ### 2. Code Splitting & Lazy Loading
  
