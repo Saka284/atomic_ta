@@ -9,20 +9,40 @@ class SensorSnapshotSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::statement("
-            INSERT INTO sensor_snapshots (sensor_id, node_id, value, recorded_at, created_at, updated_at)
-            SELECT sensor_id, node_id, value, recorded_at, NOW(), NOW()
-            FROM sensor_data sd1
-            WHERE sd1.id = (
-                SELECT MAX(sd2.id) 
-                FROM sensor_data sd2 
-                WHERE sd2.sensor_id = sd1.sensor_id 
-                AND sd2.node_id = sd1.node_id
-            )
-            ON DUPLICATE KEY UPDATE 
-                value = VALUES(value), 
-                recorded_at = VALUES(recorded_at), 
-                updated_at = NOW()
-        ");
+        // Ambil daftar kombinasi sensor_id dan node_id yang unik
+        $combinations = DB::table('sensor_data')
+            ->select('sensor_id', 'node_id')
+            ->distinct()
+            ->get();
+
+        $this->command->info("Found " . count($combinations) . " unique sensor/node combinations");
+
+        $count = 0;
+        foreach ($combinations as $combo) {
+            // Ambil data terbaru untuk setiap kombinasi
+            $latest = DB::table('sensor_data')
+                ->where('sensor_id', $combo->sensor_id)
+                ->where('node_id', $combo->node_id)
+                ->orderByDesc('id')
+                ->first();
+
+            if ($latest) {
+                DB::table('sensor_snapshots')->updateOrInsert(
+                    [
+                        'sensor_id' => $latest->sensor_id,
+                        'node_id' => $latest->node_id,
+                    ],
+                    [
+                        'value' => $latest->value,
+                        'recorded_at' => $latest->recorded_at,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]
+                );
+                $count++;
+            }
+        }
+
+        $this->command->info("Inserted/updated $count snapshots");
     }
 }
