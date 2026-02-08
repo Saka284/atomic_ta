@@ -9,6 +9,9 @@ $options = getopt('', [
     'baseline-ref::',
     'output::',
     'regression::',
+    'min-improvement::',
+    'update-baseline::',
+    'update-if-better',
     'fail-on-regression',
 ]);
 
@@ -16,6 +19,9 @@ $currentFile = $options['current'] ?? 'benchmarks/current.json';
 $baselineFile = $options['baseline'] ?? null;
 $baselineRef = $options['baseline-ref'] ?? null;
 $regression = isset($options['regression']) ? (float) $options['regression'] : 0.10;
+$minImprovement = isset($options['min-improvement']) ? (float) $options['min-improvement'] : 0.05;
+$updateBaseline = $options['update-baseline'] ?? null;
+$updateIfBetter = array_key_exists('update-if-better', $options);
 $failOnRegression = array_key_exists('fail-on-regression', $options);
 
 if (!file_exists($currentFile)) {
@@ -67,10 +73,16 @@ fwrite(STDOUT, str_repeat('-', 98) . "\n");
 fwrite(STDOUT, sprintf("%-12s %10s %10s %10s %10s %10s %10s\n", "endpoint", "base_p95", "cur_p95", "p95x", "base_avg", "cur_avg", "avgx"));
 
 $failures = [];
+$anyWorse = false;
+$totalBaseP95 = 0.0;
+$totalCurP95 = 0.0;
+$totalBaseAvg = 0.0;
+$totalCurAvg = 0.0;
 $report = [
     'meta' => [
         'baseline_ref' => $baselineRef,
         'regression' => $regression,
+        'min_improvement' => $minImprovement,
     ],
     'endpoints' => [],
 ];
@@ -88,6 +100,11 @@ foreach ($currentEndpoints as $name => $stats) {
 
     $p95x = ($curP95 > 0 && $baseP95 > 0) ? round($baseP95 / $curP95, 2) : 0.0;
     $avgx = ($curAvg > 0 && $baseAvg > 0) ? round($baseAvg / $curAvg, 2) : 0.0;
+
+    $totalBaseP95 += $baseP95;
+    $totalCurP95 += $curP95;
+    $totalBaseAvg += $baseAvg;
+    $totalCurAvg += $curAvg;
 
     fwrite(STDOUT, sprintf(
         "%-12s %10.1f %10.1f %10.2f %10.1f %10.1f %10.2f\n",
@@ -109,14 +126,57 @@ foreach ($currentEndpoints as $name => $stats) {
 
     if ($baseP95 > 0 && $curP95 > $baseP95 * (1 + $regression)) {
         $failures[] = $name;
+        $anyWorse = true;
+    }
+    if ($baseP95 > 0 && $curP95 > $baseP95) {
+        $anyWorse = true;
     }
 }
+
+$summary = [
+    'total_base_p95' => $totalBaseP95,
+    'total_cur_p95' => $totalCurP95,
+    'total_base_avg' => $totalBaseAvg,
+    'total_cur_avg' => $totalCurAvg,
+    'p95_speedup_total' => $totalCurP95 > 0 ? round($totalBaseP95 / $totalCurP95, 2) : 0.0,
+    'avg_speedup_total' => $totalCurAvg > 0 ? round($totalBaseAvg / $totalCurAvg, 2) : 0.0,
+];
+
+$report['summary'] = $summary;
+
+fwrite(STDOUT, str_repeat('-', 98) . "\n");
+fwrite(STDOUT, sprintf(
+    "%-12s %10.1f %10.1f %10.2f %10.1f %10.1f %10.2f\n",
+    'TOTAL',
+    $summary['total_base_p95'],
+    $summary['total_cur_p95'],
+    $summary['p95_speedup_total'],
+    $summary['total_base_avg'],
+    $summary['total_cur_avg'],
+    $summary['avg_speedup_total']
+));
 
 if ($output = ($options['output'] ?? null)) {
     if (!is_dir(dirname($output))) {
         @mkdir(dirname($output), 0777, true);
     }
     file_put_contents($output, json_encode($report, JSON_PRETTY_PRINT));
+}
+
+if ($updateIfBetter && $updateBaseline) {
+    $improvedTotal = $totalBaseP95 > 0
+        ? ($totalCurP95 <= $totalBaseP95 * (1 - $minImprovement))
+        : false;
+
+    if ($improvedTotal && !$anyWorse) {
+        if (!is_dir(dirname($updateBaseline))) {
+            @mkdir(dirname($updateBaseline), 0777, true);
+        }
+        file_put_contents($updateBaseline, json_encode($current, JSON_PRETTY_PRINT));
+        fwrite(STDOUT, "Baseline updated: {$updateBaseline}\n");
+    } else {
+        fwrite(STDOUT, "Baseline not updated (no sufficient improvement or regression detected).\n");
+    }
 }
 
 if (!empty($failures)) {

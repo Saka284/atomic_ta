@@ -1,0 +1,97 @@
+<?php
+
+// Usage:
+// php scripts/bench_prepare_baseline.php --ref=origin/main --output=benchmarks/baseline.json [--force]
+
+$options = getopt('', [
+    'ref::',
+    'output::',
+    'force',
+]);
+
+$ref = $options['ref'] ?? 'origin/main';
+$output = $options['output'] ?? 'benchmarks/baseline.json';
+$force = array_key_exists('force', $options);
+
+if (file_exists($output) && !$force) {
+    fwrite(STDOUT, "Baseline already exists: {$output}\n");
+    exit(0);
+}
+
+$root = realpath(__DIR__ . '/..');
+if ($root === false) {
+    fwrite(STDERR, "Cannot resolve repo root.\n");
+    exit(1);
+}
+
+$worktreeDir = $root . DIRECTORY_SEPARATOR . 'benchmarks' . DIRECTORY_SEPARATOR . '.bench-base';
+
+$run = function (string $cmd, ?string $cwd = null): int {
+    $cwd = $cwd ?? getcwd();
+    $descriptorSpec = [
+        0 => STDIN,
+        1 => STDOUT,
+        2 => STDERR,
+    ];
+    $process = proc_open($cmd, $descriptorSpec, $pipes, $cwd);
+    if (!is_resource($process)) {
+        return 1;
+    }
+    return proc_close($process);
+};
+
+// Clean old worktree if exists
+if (is_dir($worktreeDir)) {
+    $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
+}
+
+$exit = $run('git worktree add ' . escapeshellarg($worktreeDir) . ' ' . escapeshellarg($ref), $root);
+if ($exit !== 0) {
+    fwrite(STDERR, "Failed to create worktree for ref {$ref}\n");
+    exit($exit);
+}
+
+// Ensure .env exists in worktree
+$envPath = $worktreeDir . DIRECTORY_SEPARATOR . '.env';
+if (!file_exists($envPath)) {
+    $rootEnv = $root . DIRECTORY_SEPARATOR . '.env';
+    $rootEnvExample = $root . DIRECTORY_SEPARATOR . '.env.example';
+    $source = file_exists($rootEnv) ? $rootEnv : $rootEnvExample;
+    if ($source && file_exists($source)) {
+        copy($source, $envPath);
+    }
+}
+
+// Install dependencies if vendor missing
+if (!file_exists($worktreeDir . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php')) {
+    $exit = $run('composer install --prefer-dist --no-progress --no-suggest', $worktreeDir);
+    if ($exit !== 0) {
+        fwrite(STDERR, "Composer install failed in baseline worktree.\n");
+        $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
+        exit($exit);
+    }
+}
+
+// Ensure app key exists
+$run('php artisan key:generate --force', $worktreeDir);
+
+// Prepare DB and run benchmark
+$exit = $run('php artisan migrate:fresh --seed --seeder=BenchmarkSeeder', $worktreeDir);
+if ($exit !== 0) {
+    fwrite(STDERR, "Benchmark seeding failed in baseline worktree.\n");
+    $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
+    exit($exit);
+}
+
+$outputAbs = $root . DIRECTORY_SEPARATOR . $output;
+$exit = $run('php artisan bench:endpoints --output=' . escapeshellarg($outputAbs) . ' --fail-on-threshold', $worktreeDir);
+if ($exit !== 0) {
+    fwrite(STDERR, "Benchmark run failed in baseline worktree.\n");
+    $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
+    exit($exit);
+}
+
+$run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
+
+fwrite(STDOUT, "Baseline generated at {$output}\n");
+exit(0);
