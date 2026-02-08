@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
 
 class ApiController extends Controller
 {
@@ -37,10 +38,13 @@ class ApiController extends Controller
 
         $validated = $validator->validate();
 
-        // accept data once per 10 minutes per node
-        $last_data = SensorData::where('node_id', $validated['node_id'])->latest()->first();
+        $last_data = DB::selectOne("
+            SELECT created_at FROM sensor_data 
+            WHERE node_id = ? 
+            ORDER BY id DESC LIMIT 1
+        ", [$validated['node_id']]);
 
-        if ($last_data && $last_data->created_at->addMinutes(10) > now()) {
+        if ($last_data && Carbon::parse($last_data->created_at)->addMinutes(10) > now()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Server only accepts data once per 10 minutes per node',
@@ -48,7 +52,8 @@ class ApiController extends Controller
             ], 422);
         }
 
-        $sensors = Sensor::where('gh_id', $validated['gh_id'])->get();
+        $sensors = DB::select("SELECT id, name FROM sensors WHERE gh_id = ?", [$validated['gh_id']]);
+        $sensors = collect($sensors);
 
         $now = now()->toDateTimeString();
 
@@ -62,7 +67,7 @@ class ApiController extends Controller
             return [
                 'sensor_id' => $sensor->id,
                 'node_id' => $validated['node_id'],
-                'value' => $validated[$type],
+                'value' => $validated[$type] ?? null,
                 'recorded_at' => $validated['recorded_at'],
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -72,6 +77,21 @@ class ApiController extends Controller
         try {
             DB::transaction(function () use ($data) {
                 SensorData::insert($data);
+
+                foreach ($data as $row) {
+                    DB::table('sensor_snapshots')->upsert(
+                        [
+                            'sensor_id' => $row['sensor_id'],
+                            'node_id' => $row['node_id'],
+                            'value' => $row['value'],
+                            'recorded_at' => $row['recorded_at'],
+                            'created_at' => $row['created_at'],
+                            'updated_at' => $row['updated_at'],
+                        ],
+                        ['sensor_id', 'node_id'],
+                        ['value', 'recorded_at', 'updated_at']
+                    );
+                }
             });
 
             return response()->json([
@@ -221,9 +241,12 @@ class ApiController extends Controller
 
         $validated = $validator->validate();
 
-        $sensors = Sensor::where('gh_id', $validated['gh_id'])->get();
+        $sensors = DB::select("
+            SELECT id, gh_id, name, unit, threshold_min, threshold_max, created_at, updated_at
+            FROM sensors WHERE gh_id = ?
+        ", [$validated['gh_id']]);
 
-        if ($sensors->isEmpty()) {
+        if (empty($sensors)) {
             return response()->json([
                 'success' => false,
                 'message' => 'No sensors found for the given greenhouse.'
@@ -283,50 +306,36 @@ class ApiController extends Controller
 
         $validated = $validator->validate();
 
-        $sensor_ids = Sensor::where('gh_id', $validated['gh_id'])->pluck('id')->toArray();
+        $snapshot = DB::select("
+            SELECT 
+                s.name as sensor_name,
+                AVG(ss.value) as avg_value,
+                MAX(ss.recorded_at) as last_recorded_at
+            FROM sensor_snapshots ss
+            JOIN sensors s ON s.id = ss.sensor_id
+            WHERE s.gh_id = ?
+            AND s.name IN ('Temperature', 'Humidity', 'Light Intensity')
+            GROUP BY s.name
+        ", [$validated['gh_id']]);
 
-        $sensor_data = SensorData::with('sensor')
-            ->whereIn('sensor_id', $sensor_ids)
-            ->select('sensor_data.sensor_id', 'sensor_data.node_id', 'sensor_data.value', 'sensor_data.recorded_at', 'sensors.name as sensor_name')
-            ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
-            ->whereIn('sensor_data.id', function ($query) use ($sensor_ids) {
-                $query->selectRaw('MAX(sensor_data.id)')
-                    ->from('sensor_data')
-                    ->whereIn('sensor_data.sensor_id', $sensor_ids)
-                    ->groupBy('sensor_data.sensor_id', 'sensor_data.node_id');
-            })
-            ->orderByDesc('sensor_data.recorded_at')
-            ->get();
-
-        $totals = [
-            'Temperature' => 0,
-            'Humidity' => 0,
-            'Light Intensity' => 0,
+        $result = [
+            'temperature' => 0,
+            'humidity' => 0,
+            'light_intensity' => 0,
+            'last_recorded_at' => null,
         ];
 
-        $counts = [
-            'Temperature' => 0,
-            'Humidity' => 0,
-            'Light Intensity' => 0,
-        ];
-
-        foreach ($sensor_data as $data) {
-            if (isset($totals[$data->sensor_name])) {
-                $totals[$data->sensor_name] += $data->value;
-                $counts[$data->sensor_name]++;
+        foreach ($snapshot as $row) {
+            $key = strtolower(str_replace(' ', '_', $row->sensor_name));
+            $result[$key] = round($row->avg_value, 2);
+            if (!$result['last_recorded_at'] || $row->last_recorded_at > $result['last_recorded_at']) {
+                $result['last_recorded_at'] = $row->last_recorded_at;
             }
         }
 
-        $data = [
-            'temperature' => $counts['Temperature'] ? round($totals['Temperature'] / $counts['Temperature'], 2) : 0,
-            'humidity' => $counts['Humidity'] ? round($totals['Humidity'] / $counts['Humidity'], 2) : 0,
-            'light_intensity' => $counts['Light Intensity'] ? round($totals['Light Intensity'] / $counts['Light Intensity'], 2) : 0,
-            'last_recorded_at' => $sensor_data->max('recorded_at'),
-        ];
-
         return response()->json([
             'success' => true,
-            'data' => $data
+            'data' => $result
         ]);
     }
 
@@ -351,65 +360,69 @@ class ApiController extends Controller
         $date_end = !empty($decodedData['date_end']) ? $decodedData['date_end'] : null;
         $time = !empty($decodedData['time']) ? $decodedData['time'] : null;
 
-        $sensorExists = Sensor::where('id', $sensor_id)->exists();
+        // Optimization: Raw SQL to skip hydration checks
+        $sensorExists = DB::selectOne("SELECT 1 FROM sensors WHERE id = ?", [$sensor_id]);
         if (!$sensorExists) {
             return response()->json(['success' => false, 'message' => 'Sensor not found.'], 404);
         }
 
-        $query = SensorData::with('sensor')->where('sensor_id', $sensor_id);
+        // Cache Key based on request params
+        $cacheKey = 'chart_' . md5($dict);
 
-        if ($date_start && $date_end) {
-            $query->whereDate('recorded_at', '>=', $date_start);
-            $query->whereDate('recorded_at', '<=', $date_end);
-        } else {
-            $query->whereDate('recorded_at', $date_start);
-        }
-
-        if ($time) {
-            $query->whereRaw('HOUR(recorded_at) = ?', [date('H', strtotime($time))]);
-            $sensorData = $query->select('*', 'value as avg_value')->orderBy('recorded_at')->get();
-        } else {
-            $sensorData = $query->orderBy('recorded_at')->get();
-
-            $hourlyData = [];
-
-            foreach ($sensorData as $data) {
-                $hour = date('Y-m-d H:00:00', strtotime($data->recorded_at));
-
-                if (!isset($hourlyData[$hour])) {
-                    $hourlyData[$hour] = [
-                        'total' => 0,
-                        'count' => 0,
-                    ];
-                }
-
-                $hourlyData[$hour]['total'] += $data->value;
-                $hourlyData[$hour]['count'] += 1;
-            }
-
-            $sensorData = collect();
-            foreach ($hourlyData as $hour => $values) {
-                $sensorData->push([
-                    'hour' => $hour,
-                    'avg_value' => $values['total'] / $values['count'],
-                ]);
-            }
-        }
-
-        $data = $sensorData->pluck('avg_value');
-        $label = $sensorData->map(function ($data) {
-            if (isset($data['hour'])) {
-                return date('d M H:i', strtotime($data['hour']));
+        // Optimization: Cache result for 60 seconds
+        return Cache::remember($cacheKey, 60, function () use ($sensor_id, $date_start, $date_end, $time) {
+            
+            if ($time) {
+                // Minute-by-minute data for a specific hour
+                $hour = date('H', strtotime($time));
+                $sql = "
+                    SELECT value as avg_value, recorded_at 
+                    FROM sensor_data 
+                    WHERE sensor_id = ? 
+                    AND DATE(recorded_at) = ? 
+                    AND HOUR(recorded_at) = ?
+                    ORDER BY recorded_at ASC
+                ";
+                $params = [$sensor_id, $date_start, $hour];
+                $dataQuery = DB::select($sql, $params);
+                
+                $labels = array_map(fn($row) => date('H:i', strtotime($row->recorded_at)), $dataQuery);
+                $values = array_column($dataQuery, 'avg_value');
+    
             } else {
-                return date('H:i', strtotime($data->recorded_at));
+                // Hourly Average Calculation pushed to MySQL
+                $sql = "
+                    SELECT 
+                        DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00:00') as hour_group,
+                        AVG(value) as avg_value
+                    FROM sensor_data
+                    WHERE sensor_id = ?
+                ";
+                $params = [$sensor_id];
+    
+                if ($date_start && $date_end) {
+                    $sql .= " AND DATE(recorded_at) >= ? AND DATE(recorded_at) <= ?";
+                    $params[] = $date_start;
+                    $params[] = $date_end;
+                } else {
+                    $sql .= " AND DATE(recorded_at) = ?";
+                    $params[] = $date_start;
+                }
+    
+                $sql .= " GROUP BY hour_group ORDER BY hour_group ASC";
+    
+                $dataQuery = DB::select($sql, $params);
+    
+                $labels = array_map(fn($row) => date('d M H:i', strtotime($row->hour_group)), $dataQuery);
+                $values = array_column($dataQuery, 'avg_value');
             }
+    
+            // Optimization: Return plain array, no collection overhead
+            return response()->json([
+                'data' => $values,
+                'label' => $labels,
+            ]);
         });
-
-
-        return response()->json([
-            'data' => $data,
-            'label' => $label,
-        ]);
     }
 
 
@@ -425,31 +438,67 @@ class ApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid JSON format.'], 400);
         }
 
-        $greenhouseExists = Greenhouse::where('id', $decodedData['gh_id'])->exists();
+        $gh_id = $decodedData['gh_id'];
+
+        // Optimization: Raw SQL for check
+        $greenhouseExists = DB::selectOne("SELECT 1 FROM greenhouses WHERE id = ?", [$gh_id]);
         if (!$greenhouseExists) {
             return response()->json(['success' => false, 'message' => 'Greenhouse not found.'], 404);
         }
 
-        $sensorData = SensorData::select(
-            'sensor_data.node_id',
-            DB::raw('DATE(sensor_data.recorded_at) as date'),
-            DB::raw('TIME(sensor_data.recorded_at) as time'),
-            DB::raw('MAX(CASE WHEN sensors.name = "Temperature" THEN sensor_data.value END) as temperature'),
-            DB::raw('MAX(CASE WHEN sensors.name = "Humidity" THEN sensor_data.value END) as humidity'),
-            DB::raw('MAX(CASE WHEN sensors.name = "Light Intensity" THEN sensor_data.value END) as light_intensity'),
-            DB::raw('MAX(CASE WHEN sensors.name = "RSSI" THEN sensor_data.value END) as rssi')
-        )
-            ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
-            ->join('greenhouses', 'greenhouses.id', '=', 'sensors.gh_id')
-            ->where('greenhouses.id', $decodedData['gh_id'])
-            ->groupBy('sensor_data.node_id', 'sensor_data.recorded_at')
-            ->orderByDesc('recorded_at')
-            ->get();
+        // Cache Key based on request params
+        $cacheKey = 'table_' . md5($dict);
 
-        return response()->json([
-            'success' => true,
-            'data' => $sensorData
-        ]);
+        // Optimization: Cache result for 60 seconds
+        return Cache::remember($cacheKey, 60, function () use ($gh_id, $decodedData) {
+            // Optimization: Raw SQL Pivot Query
+            // Bypasses Eloquent overhead for complex joins and aggregation
+            // Dynamic Filters
+            $startTime = $decodedData['start_date'] ?? null;
+            $endTime = $decodedData['end_date'] ?? null;
+            $nodeId = $decodedData['node_id'] ?? null;
+    
+            $sql = "
+                SELECT 
+                    sd.node_id,
+                    DATE(sd.recorded_at) as date,
+                    TIME(sd.recorded_at) as time,
+                    MAX(CASE WHEN s.name = 'Temperature' THEN sd.value END) as temperature,
+                    MAX(CASE WHEN s.name = 'Humidity' THEN sd.value END) as humidity,
+                    MAX(CASE WHEN s.name = 'Light Intensity' THEN sd.value END) as light_intensity,
+                    MAX(CASE WHEN s.name = 'RSSI' THEN sd.value END) as rssi
+                FROM sensor_data sd
+                JOIN sensors s ON s.id = sd.sensor_id
+                WHERE s.gh_id = ?
+            ";
+    
+            $params = [$gh_id];
+    
+            if ($startTime && $endTime) {
+                $sql .= " AND DATE(sd.recorded_at) >= ? AND DATE(sd.recorded_at) <= ?";
+                $params[] = $startTime;
+                $params[] = $endTime;
+            }
+    
+            if ($nodeId) {
+                $sql .= " AND sd.node_id = ?";
+                $params[] = $nodeId;
+            }
+    
+            $sql .= "
+                GROUP BY sd.node_id, sd.recorded_at
+                ORDER BY sd.recorded_at DESC, sd.node_id ASC
+                LIMIT 500
+            ";
+    
+            // Optimization: Raw SQL Pivot Query
+            $sensorData = DB::select($sql, $params);
+    
+            return response()->json([
+                'success' => true,
+                'data' => $sensorData
+            ]);
+        });
     }
 
     public function cameraPerGH(Request $request)
@@ -464,25 +513,35 @@ class ApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid JSON format.'], 400);
         }
 
-        $greenhouseExists = Greenhouse::where('id', $decodedData['gh_id'])->exists();
+        $gh_id = $decodedData['gh_id'];
+
+        $greenhouseExists = DB::selectOne("SELECT 1 FROM greenhouses WHERE id = ?", [$gh_id]);
         if (!$greenhouseExists) {
             return response()->json(['success' => false, 'message' => 'Greenhouse not found.'], 404);
         }
 
-        $cameraData = CameraData::where('gh_id', $decodedData['gh_id'])
-            ->orderByDesc('recorded_at')
-            ->get()
-            ->map(function ($camera) {
-                $camera->recorded_at = Carbon::parse($camera->recorded_at)->format('d/m/Y h:i:s');
-                $camera->image = url($camera->image);
-                $camera->status = $camera->isFoggy ?
-                    'Berkabut' : 'Tidak Berkabut';
-                return $camera;
-            });
+        // Optimization: Raw SQL Select
+        $cameraData = DB::select("
+            SELECT 
+                id, gh_id, image, isFoggy, recorded_at, fog_percentage
+            FROM camera_data 
+            WHERE gh_id = ? 
+            ORDER BY recorded_at DESC
+            LIMIT 100
+        ", [$gh_id]);
+
+        // Lightweight formatting map
+        $formattedData = array_map(function ($camera) {
+            // Note: $camera is stdClass here, not Eloquent model
+            $camera->recorded_at = date('d/m/Y h:i:s', strtotime($camera->recorded_at));
+            $camera->image = url($camera->image);
+            $camera->status = $camera->isFoggy ? 'Berkabut' : 'Tidak Berkabut';
+            return $camera;
+        }, $cameraData);
 
         return response()->json([
             'success' => true,
-            'data' => $cameraData
+            'data' => $formattedData
         ]);
     }
 
@@ -499,28 +558,45 @@ class ApiController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        foreach ($request->thresholds as $thresholdData) {
-            $sensor = Sensor::find($thresholdData['sensor_id']);
-            if ($sensor) {
-                $sensor->update([
-                    'threshold_min' => $thresholdData['threshold_min'],
-                    'threshold_max' => $thresholdData['threshold_max'],
-                ]);
-            }
+        $cases_min = [];
+        $cases_max = [];
+        $ids = [];
+
+        foreach ($request->thresholds as $t) {
+            $id = (int) $t['sensor_id'];
+            $min = (float) $t['threshold_min'];
+            $max = (float) $t['threshold_max'];
+            
+            $cases_min[] = "WHEN id = {$id} THEN {$min}";
+            $cases_max[] = "WHEN id = {$id} THEN {$max}";
+            $ids[] = $id;
         }
+
+        if (!empty($ids)) {
+            $sql = "UPDATE sensors SET 
+                threshold_min = CASE " . implode(' ', $cases_min) . " ELSE threshold_min END,
+                threshold_max = CASE " . implode(' ', $cases_max) . " ELSE threshold_max END,
+                updated_at = NOW()
+                WHERE id IN (" . implode(',', $ids) . ")";
+            DB::statement($sql);
+        }
+
+        Cache::forget('controlling_data');
 
         return response()->json(['message' => 'Threshold berhasil diperbarui'], 200);
     }
 
     public function getControlling()
     {
-        $data = Greenhouse::with(['sensor' => function ($query) {
-            $query->whereNotIn('name', ['RSSI']);
-        }])->get();
-        
-        return response()->json([
-            'success' => true,
-            'data' => $data
-        ]);
+        return Cache::remember('controlling_data', 60, function () {
+            $data = Greenhouse::with(['sensor' => function ($query) {
+                $query->whereNotIn('name', ['RSSI']);
+            }])->get();
+            
+            return response()->json([
+                'success' => true,
+                'data' => $data
+            ]);
+        });
     }
 }

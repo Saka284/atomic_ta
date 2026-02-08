@@ -22,8 +22,7 @@
  */
 
 import { onMounted, onUnmounted, ref, watch, computed } from "vue";
-import { Head } from "@inertiajs/inertia-vue3";
-import { Inertia } from "@inertiajs/inertia";
+import { Head, router } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import Tabs from "@/Components/Tabs.vue";
 import DigitalClock from "@/Components/DigitalClock.vue";
@@ -760,7 +759,7 @@ function startAutoRefresh() {
   autoRefreshInterval = setInterval(() => {
     // Refresh data dari server via Inertia tanpa full page reload
     // OPTIMIZED: Tidak perlu gh_id karena server sekarang mengirim semua data greenhouse
-    Inertia.get(route("heatmap"), {}, { 
+    router.get(route("heatmap"), {}, {
       preserveState: true,
       preserveScroll: true,
       only: ['sensorDataByGh', 'thresholdsByGh', 'latestData']

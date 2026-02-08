@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 class Greenhouse extends Model
 {
     use HasFactory;
+    
+    protected $fillable = ['id', 'name'];
 
     public function sensor()
     {

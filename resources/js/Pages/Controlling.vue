@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, watch, computed } from "vue";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
-import { Head, usePage } from "@inertiajs/inertia-vue3";
+import { Head, usePage } from "@inertiajs/vue3";
 import Tabs from "@/Components/Tabs.vue";
 import ScheduleCard from "@/Components/ScheduleCard.vue";
 import Slider from "@vueform/slider";
@@ -10,25 +10,27 @@ import axios from "axios";
 
 const toast = useToast();
 
-const { greenhouses } = usePage().props.value;
+const { greenhouses, initialData, initialSchedules } = usePage().props;
 const activeTab = ref(greenhouses[0]?.id);
-const activeSubTab = ref("threshold"); // "threshold" or "scheduling"
+const activeSubTab = ref("threshold");
 const isSaving = ref(false);
 const isSavingSchedules = ref(false);
 
-const data = ref([]);
+const data = ref(initialData || []);
 const threshold = ref({});
 const editedThresholds = ref({});
 
-// Scheduling state - per greenhouse
 const schedules = ref({});
 const originalSchedules = ref({});
 let scheduleIdCounter = 1;
 
-// Initialize empty schedules for each greenhouse
 greenhouses.forEach((gh) => {
-    schedules.value[gh.id] = [];
-    originalSchedules.value[gh.id] = [];
+    const ghSchedules = initialSchedules?.[gh.id] || [];
+    schedules.value[gh.id] = ghSchedules.map((s) => ({
+        ...s,
+        id: s.id || scheduleIdCounter++,
+    }));
+    originalSchedules.value[gh.id] = JSON.parse(JSON.stringify(schedules.value[gh.id]));
 });
 
 const getMaxValue = (unit) => {
@@ -40,18 +42,7 @@ const getMaxValue = (unit) => {
 };
 
 onMounted(() => {
-    getControlling();
-});
-
-const getControlling = async () => {
-    try {
-        const response = await axios.get("/api/get-controlling");
-        data.value = response.data?.data || [];
-
-        if (!Array.isArray(data.value)) {
-            data.value = [];
-        }
-
+    if (Array.isArray(data.value)) {
         data.value.forEach((greenhouse) => {
             greenhouse.sensor.forEach((sensor) => {
                 threshold.value[sensor.id] = [
@@ -60,20 +51,8 @@ const getControlling = async () => {
                 ];
             });
         });
-
-        if (response.data.length > 0) {
-            activeTab.value = response.data[0].id;
-        }
-
-        // Load schedules for each greenhouse
-        for (const gh of greenhouses) {
-            await loadSchedules(gh.id);
-        }
-    } catch (error) {
-        toast.error("Gagal memuat data controlling!");
-        console.error("Error:", error);
     }
-};
+});
 
 const loadSchedules = async (ghId) => {
     try {

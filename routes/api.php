@@ -46,7 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/schedules', [ScheduleController::class, 'getSchedulesForWeb']);
     Route::post('/schedules', [ScheduleController::class, 'saveSchedules']);
 
-    // Schedule API route for Gateway
+    // Schedule API route for Gateway (Temporary No Auth)
     Route::post('/gateway/schedule', [ScheduleController::class, 'getSchedule']);
 });
 

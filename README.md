@@ -1,64 +1,98 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400"></a></p>
+# Atomic Web TA
 
-<p align="center">
-<a href="https://travis-ci.org/laravel/framework"><img src="https://travis-ci.org/laravel/framework.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+[![Laravel Tests](https://github.com/DhimasArdinata/atomic-web-ta/actions/workflows/ci.yml/badge.svg)](https://github.com/DhimasArdinata/atomic-web-ta/actions/workflows/ci.yml)
 
-## About Laravel
+Atomic Web TA adalah aplikasi web berbasis Laravel yang dirancang untuk memantau dan mengontrol sistem Greenhouse IoT. Aplikasi ini menyediakan API untuk berinteraksi dengan perangkat mikrokontroler (ESP32/ESP8266) dan antarmuka web untuk pengguna.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Fitur Utama
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+*   **Pemantauan Real-time**: Menampilkan data suhu, kelembaban, dan visualisasi dari sensor.
+*   **Kontrol Aktuator**: Mengelola perangkat seperti blower, exhaust, dan dehumidifier.
+*   **Penjadwalan Otomatis**: Mengatur jadwal operasi perangkat.
+*   **Kamera Terintegrasi**: Upload dan monitoring gambar dari kamera IoT.
+*   **OTA Firmware**: Manajemen pembaruan firmware mikrokontroler secara nirkabel (Over-the-Air).
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Cakupan API (API Coverage)
 
-## Learning Laravel
+Sistem ini telah dilengkapi dengan pengujian otomatis (CI/CD) untuk memastikan keandalan API, terutama yang berhubungan dengan perangkat eksternal.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Berikut adalah daftar API yang telah tercover oleh test automation:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains over 1500 video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### 1. Sensor API
+*   `POST /api/sensor`: Menerima data telemetri (suhu, kelembaban, dll) dari node sensor.
+    *   **Status Test**: ✅ Tercover (Memastikan data tersimpan di database).
 
-## Laravel Sponsors
+### 2. Camera API
+*   `POST /api/camera`: Menerima upload gambar dari modul kamera ESP32-CAM.
+    *   **Status Test**: ✅ Tercover (Memastikan file gambar diterima dan disimpan).
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the Laravel [Patreon page](https://patreon.com/taylorotwell).
+### 3. OTA (Firmware) API
+*   `GET /api/get-file/{nodeId}`: Endpoint bagi mikrokontroler untuk mengecek update firmware terbaru.
+    *   **Status Test**: ✅ Tercover (Memastikan respon info firmware valid).
 
-### Premium Partners
+### 4. Schedule API
+*   `POST /api/schedules`: Menyimpan konfigurasi jadwal dari Web.
+    *   **Status Test**: ✅ Tercover (Memastikan setting jadwal tersimpan).
+*   `POST /api/gateway/schedule`: Endpoint bagi Gateway untuk mengambil jadwal aktif.
+    *   **Status Test**: ✅ Tercover (Memastikan format binary relay/jadwal sesuai spek mikrokontroler).
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Cubet Techno Labs](https://cubettech.com)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[Many](https://www.many.co.uk)**
-- **[Webdock, Fast VPS Hosting](https://www.webdock.io/en)**
-- **[DevSquad](https://devsquad.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[OP.GG](https://op.gg)**
-- **[WebReinvent](https://webreinvent.com/?utm_source=laravel&utm_medium=github&utm_campaign=patreon-sponsors)**
-- **[Lendio](https://lendio.com)**
+## Status Build & Quality
 
-## Contributing
+Proyek ini menggunakan GitHub Actions untuk Continuous Integration (CI).
+Setiap push atau pull request ke branch apapun akan otomatis menjalankan:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+1.  **Security Audit**: Mengecek celah keamanan pada dependencies (`composer audit`).
+2.  **Unit & Feature Tests**: Menjalankan test suite PHPUnit (`php artisan test`).
+3.  **Asset Build**: Memastikan aset frontend (Vue.js/Tailwind) berhasil di-compile (`npm run build`).
+4.  **Artifact Upload**: Jika test gagal, log server akan otomatis di-upload untuk debugging.
 
-## Code of Conduct
+Jika badge di atas berwarna **Hijau (Passing)**, berarti seluruh kode aman dan siap digunakan.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Cara Instalasi Lokal
 
-## Security Vulnerabilities
+1.  **Clone Repositori**
+    ```bash
+    git clone https://github.com/DhimasArdinata/atomic-web-ta.git
+    cd atomic-web-ta
+    ```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+2.  **Install Dependencies**
+    ```bash
+    composer install
+    npm install
+    ```
 
-## License
+3.  **Konfigurasi Environment**
+    Copy file `.env.example` menjadi `.env` dan atur database.
+    ```bash
+    cp .env.example .env
+    php artisan key:generate
+    ```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+4.  **Setup Database**
+    ```bash
+    # Buat database MySQL
+    mysql -u root -p -e "CREATE DATABASE atomic_web_local"
+    
+    # Import struktur dan data (jika ada backup)
+    mysql -u root -p atomic_web_local < sql/atomic_backup-01-structure.sql
+    
+    # Import data (opsional - jika ada file backup)
+    Get-ChildItem sql\atomic_backup-*-data.sql | ForEach-Object { mysql -u root -p atomic_web_local -e "source $_" }
+    
+    # Atau jalankan migration jika fresh install
+    php artisan migrate
+    
+    # Populate sensor_snapshots table (WAJIB untuk monitoring page)
+    php artisan db:seed --class=SensorSnapshotSeeder
+    ```
+
+5.  **Jalankan Server**
+    ```bash
+    php artisan serve
+    npm run watch
+    ```
+
+## Lisensi
+
+Aplikasi ini bersifat open-source di bawah lisensi [MIT](https://opensource.org/licenses/MIT).
