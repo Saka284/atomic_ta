@@ -2,8 +2,7 @@
 
 namespace App\Exports;
 
-use App\Models\CameraData;
-use Illuminate\Support\Facades\Storage;
+use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 
@@ -21,8 +20,11 @@ class CameraDataExport implements FromCollection, WithHeadings
     public function collection()
     {
         // Optimization: Raw SQL to bypass Model Hydration
-        $sql = "SELECT gh_id, recorded_at, image, isFoggy FROM camera_data WHERE DATE(recorded_at) >= ? AND DATE(recorded_at) <= ?";
-        $params = [$this->start_date, $this->end_date];
+        $start = Carbon::parse($this->start_date)->startOfDay()->toDateTimeString();
+        $end = Carbon::parse($this->end_date)->addDay()->startOfDay()->toDateTimeString();
+
+        $sql = "SELECT gh_id, recorded_at, image, isFoggy FROM camera_data WHERE recorded_at >= ? AND recorded_at < ?";
+        $params = [$start, $end];
 
         if ($this->gh_id) {
             $sql .= " AND gh_id = ?";
