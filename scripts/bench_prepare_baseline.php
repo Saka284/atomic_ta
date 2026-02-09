@@ -51,6 +51,25 @@ if ($exit !== 0) {
     exit($exit);
 }
 
+// Copy benchmark helpers into baseline worktree (so older refs can run benches)
+$benchFiles = [
+    'app/Console/Commands/BenchEndpoints.php',
+    'config/bench.php',
+    'database/seeders/BenchmarkSeeder.php',
+];
+
+foreach ($benchFiles as $file) {
+    $source = $root . DIRECTORY_SEPARATOR . $file;
+    $target = $worktreeDir . DIRECTORY_SEPARATOR . $file;
+    if (file_exists($source)) {
+        $dir = dirname($target);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
+        copy($source, $target);
+    }
+}
+
 // Ensure .env exists in worktree
 $envPath = $worktreeDir . DIRECTORY_SEPARATOR . '.env';
 if (!file_exists($envPath)) {
