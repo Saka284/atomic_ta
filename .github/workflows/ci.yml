@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   laravel-test:
     name: Laravel API Tests (PHP ${{ matrix.php-version }})
@@ -70,6 +73,45 @@ jobs:
 
     - name: Execute Tests
       run: php artisan test
+
+    - name: Seed Benchmark Data
+      run: php artisan migrate:fresh --seed --seeder=BenchmarkSeeder
+
+    - name: Prepare Baseline (from base ref if missing)
+      env:
+        BENCH_BASE_REF: ${{ github.event.pull_request.base.sha }}
+      run: |
+        BASE_REF=${BENCH_BASE_REF:-origin/main}
+        php scripts/bench_prepare_baseline.php --ref="$BASE_REF" --output=benchmarks/baseline.json
+
+    - name: Run Benchmarks
+      run: php artisan bench:endpoints --output=benchmarks/current.json --fail-on-threshold
+
+    - name: Compare Benchmarks
+      env:
+        BENCH_BASE_REF: ${{ github.event.pull_request.base.sha }}
+      run: |
+        BASE_REF=${BENCH_BASE_REF:-origin/main}
+        php scripts/bench_compare.php --current=benchmarks/current.json --baseline=benchmarks/baseline.json --output=benchmarks/compare.json --fail-on-regression --update-if-better --update-baseline=benchmarks/baseline.json
+
+    - name: Commit Baseline Update (main only)
+      if: github.ref == 'refs/heads/main'
+      run: |
+        if git status --porcelain benchmarks/baseline.json | grep -q .; then
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add benchmarks/baseline.json
+          git commit -m "chore: update benchmark baseline"
+          git push origin HEAD:main
+        else
+          echo "Baseline unchanged."
+        fi
+
+    - name: Upload Benchmark Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmarks
 
     # USEFUL ADDITION: Upload logs if tests fail helps debugging
     - name: Upload API Logs

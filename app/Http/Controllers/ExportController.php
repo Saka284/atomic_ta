@@ -8,6 +8,7 @@ use App\Exports\SensorDataExport; // Export Sensor (Tetap dipakai)
 use Maatwebsite\Excel\Facades\Excel;
 use ZipArchive;                   // Library buat bikin ZIP
 use Illuminate\Support\Facades\File;
+use Carbon\Carbon;
 
 class ExportController extends Controller
 {
@@ -41,9 +42,12 @@ class ExportController extends Controller
         ]);
 
         // 2. Ambil Data dari Database
+        $start = Carbon::parse($request->start_date)->startOfDay();
+        $end = Carbon::parse($request->end_date)->addDay()->startOfDay();
+
         $query = CameraData::query()
-            ->whereDate('recorded_at', '>=', $request->start_date)
-            ->whereDate('recorded_at', '<=', $request->end_date);
+            ->where('recorded_at', '>=', $start)
+            ->where('recorded_at', '<', $end);
 
         if ($request->gh_id) {
             $query->where('gh_id', $request->gh_id);

@@ -45,8 +45,8 @@ class HandleInertiaRequests extends Middleware
                 'location' => $request->url(),
             ],
             'greenhouses' => function () {
-                return Cache::remember('greenhouses', 60, function () {
-                    return Greenhouse::with('sensor')->get();
+                return Cache::remember('greenhouses_basic', 3600, function () {
+                    return Greenhouse::select('id', 'name')->get();
                 });
             }
         ]);

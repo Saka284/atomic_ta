@@ -17,22 +17,26 @@ class PageController extends Controller
 {
     public function monitoring()
     {
-        // 1. Optimized Raw SQL for Latest Data Time
-        // Leveraging the C++ MySQL Engine for aggregation and joining
-        $latestDataTime = DB::select("
-            SELECT 
-                s.gh_id,
-                ss.sensor_id,
-                MAX(ss.recorded_at) as latest_time
-            FROM sensor_snapshots ss
-            JOIN sensors s ON s.id = ss.sensor_id
-            GROUP BY ss.sensor_id, s.gh_id
-        ");
+        // 1. Optimized Raw SQL for Latest Data Time (cached)
+        $latestDataTime = Cache::remember('monitoring_latest_time', 10, function () {
+            // Leveraging the C++ MySQL Engine for aggregation and joining
+            $rows = DB::select("
+                SELECT 
+                    s.gh_id,
+                    ss.sensor_id,
+                    MAX(ss.recorded_at) as latest_time
+                FROM sensor_snapshots ss
+                JOIN sensors s ON s.id = ss.sensor_id
+                GROUP BY ss.sensor_id, s.gh_id
+            ");
 
-        // Format dates in PHP (faster than MySQL DATE_FORMAT for large results)
-        foreach ($latestDataTime as $item) {
-            $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
-        }
+            // Format dates in PHP (faster than MySQL DATE_FORMAT for large results)
+            foreach ($rows as $item) {
+                $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
+            }
+
+            return $rows;
+        });
 
         // 2. Optimized Gauge Data Query (Snapshot Read - O(1))
         // Reads from the pre-computed "Materialized View" table
@@ -68,24 +72,56 @@ class PageController extends Controller
     public function table()
     {
         $allData = [];
-        foreach (Greenhouse::all() as $gh) {
-            $allData[$gh->id] = Cache::remember("table_gh_{$gh->id}", 60, function () use ($gh) {
-                return DB::select("
+        $greenhouses = Cache::remember('greenhouses', 3600, function () {
+            return Greenhouse::select('id')->get();
+        });
+
+        foreach ($greenhouses as $gh) {
+            $sensorIds = Cache::remember("sensor_ids_{$gh->id}", 3600, function () use ($gh) {
+                return Sensor::where('gh_id', $gh->id)->pluck('id', 'name')->toArray();
+            });
+
+            $sensorIdMap = [
+                'temperature' => $sensorIds['Temperature'] ?? null,
+                'humidity' => $sensorIds['Humidity'] ?? null,
+                'light_intensity' => $sensorIds['Light Intensity'] ?? null,
+                'rssi' => $sensorIds['RSSI'] ?? null,
+            ];
+
+            $caseParams = [
+                $sensorIdMap['temperature'],
+                $sensorIdMap['humidity'],
+                $sensorIdMap['light_intensity'],
+                $sensorIdMap['rssi'],
+            ];
+
+            $inIds = array_values(array_filter($sensorIdMap));
+
+            $allData[$gh->id] = Cache::remember("table_gh_{$gh->id}", 60, function () use ($caseParams, $inIds) {
+                if (empty($inIds)) {
+                    return [];
+                }
+
+                $placeholders = implode(',', array_fill(0, count($inIds), '?'));
+                $sql = "
                     SELECT 
                         sd.node_id,
                         DATE(sd.recorded_at) as date,
                         TIME(sd.recorded_at) as time,
-                        MAX(CASE WHEN s.name = 'Temperature' THEN sd.value END) as temperature,
-                        MAX(CASE WHEN s.name = 'Humidity' THEN sd.value END) as humidity,
-                        MAX(CASE WHEN s.name = 'Light Intensity' THEN sd.value END) as light_intensity,
-                        MAX(CASE WHEN s.name = 'RSSI' THEN sd.value END) as rssi
+                        MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as temperature,
+                        MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as humidity,
+                        MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as light_intensity,
+                        MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as rssi
                     FROM sensor_data sd
-                    JOIN sensors s ON s.id = sd.sensor_id
-                    WHERE s.gh_id = ?
+                    WHERE sd.sensor_id IN ($placeholders)
                     GROUP BY sd.node_id, sd.recorded_at
                     ORDER BY sd.recorded_at DESC
                     LIMIT 500
-                ", [$gh->id]);
+                ";
+
+                $params = array_merge($caseParams, $inIds);
+
+                return DB::select($sql, $params);
             });
         }
         
@@ -112,22 +148,18 @@ class PageController extends Controller
         // ===============================
         $sensorDataByGh = Cache::remember('heatmap_sensor_data', 60, function () use ($ghIds) {
             // Single query: ambil data terbaru per (gh_id, sensor_name, node_id)
+            // Menggunakan sensor_snapshots (materialized view) untuk O(1) per sensor/node
+            $placeholders = implode(',', array_fill(0, count($ghIds), '?'));
             $allData = DB::select("
                 SELECT 
                     s.gh_id,
                     s.name as sensor_name,
-                    sd.node_id,
-                    sd.value
-                FROM sensor_data sd
-                INNER JOIN sensors s ON s.id = sd.sensor_id
-                WHERE sd.id IN (
-                    SELECT MAX(sd2.id)
-                    FROM sensor_data sd2
-                    INNER JOIN sensors s2 ON s2.id = sd2.sensor_id
-                    WHERE s2.gh_id IN (" . implode(',', $ghIds) . ")
-                    GROUP BY sd2.sensor_id, sd2.node_id
-                )
-            ");
+                    ss.node_id,
+                    ss.value
+                FROM sensor_snapshots ss
+                INNER JOIN sensors s ON s.id = ss.sensor_id
+                WHERE s.gh_id IN ($placeholders)
+            ", $ghIds);
 
             // Transform ke struktur yang dibutuhkan frontend
             $result = [];
@@ -212,17 +244,20 @@ class PageController extends Controller
         // GET LATEST DATA TIME (cached)
         // ===============================
         $latestDataTime = Cache::remember('heatmap_latest_time', 30, function () {
-            return SensorData::select(
-                'sensors.gh_id',
-                DB::raw('MAX(sensor_data.recorded_at) as latest_time')
-            )
-                ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
-                ->groupBy('sensors.gh_id')
-                ->get()
-                ->map(function ($item) {
-                    $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
-                    return $item;
-                });
+            $rows = DB::select("
+                SELECT 
+                    s.gh_id,
+                    MAX(ss.recorded_at) as latest_time
+                FROM sensor_snapshots ss
+                JOIN sensors s ON s.id = ss.sensor_id
+                GROUP BY s.gh_id
+            ");
+
+            foreach ($rows as $row) {
+                $row->latest_time = Carbon::parse($row->latest_time)->format('d/m/Y H:i:s');
+            }
+
+            return $rows;
         });
 
         return Inertia::render('Heatmap', [
@@ -294,7 +329,9 @@ class PageController extends Controller
 
     public function camera()
     {
-        $latestDataTime = CameraData::latest()->value('recorded_at');
+        $latestDataTime = Cache::remember('camera_latest_time', 10, function () {
+            return CameraData::latest()->value('recorded_at');
+        });
         $formattedTime = $latestDataTime ? Carbon::parse($latestDataTime)->format('d/m/Y H:i:s') : null;
         return Inertia::render('Camera', [
             'latestData' => $formattedTime

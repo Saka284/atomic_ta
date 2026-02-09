@@ -77,21 +77,12 @@ class ApiController extends Controller
         try {
             DB::transaction(function () use ($data) {
                 SensorData::insert($data);
-
-                foreach ($data as $row) {
-                    DB::table('sensor_snapshots')->upsert(
-                        [
-                            'sensor_id' => $row['sensor_id'],
-                            'node_id' => $row['node_id'],
-                            'value' => $row['value'],
-                            'recorded_at' => $row['recorded_at'],
-                            'created_at' => $row['created_at'],
-                            'updated_at' => $row['updated_at'],
-                        ],
-                        ['sensor_id', 'node_id'],
-                        ['value', 'recorded_at', 'updated_at']
-                    );
-                }
+                // Single batch upsert to reduce round-trips
+                DB::table('sensor_snapshots')->upsert(
+                    $data,
+                    ['sensor_id', 'node_id'],
+                    ['value', 'recorded_at', 'updated_at']
+                );
             });
 
             return response()->json([
@@ -375,15 +366,17 @@ class ApiController extends Controller
             if ($time) {
                 // Minute-by-minute data for a specific hour
                 $hour = date('H', strtotime($time));
+                $start = Carbon::parse($date_start)->setTime((int) $hour, 0, 0);
+                $end = (clone $start)->addHour();
                 $sql = "
                     SELECT value as avg_value, recorded_at 
                     FROM sensor_data 
                     WHERE sensor_id = ? 
-                    AND DATE(recorded_at) = ? 
-                    AND HOUR(recorded_at) = ?
+                    AND recorded_at >= ? 
+                    AND recorded_at < ?
                     ORDER BY recorded_at ASC
                 ";
-                $params = [$sensor_id, $date_start, $hour];
+                $params = [$sensor_id, $start->toDateTimeString(), $end->toDateTimeString()];
                 $dataQuery = DB::select($sql, $params);
                 
                 $labels = array_map(fn($row) => date('H:i', strtotime($row->recorded_at)), $dataQuery);
@@ -391,6 +384,10 @@ class ApiController extends Controller
     
             } else {
                 // Hourly Average Calculation pushed to MySQL
+                $start = Carbon::parse($date_start)->startOfDay();
+                $end = $date_end
+                    ? Carbon::parse($date_end)->addDay()->startOfDay()
+                    : (clone $start)->addDay();
                 $sql = "
                     SELECT 
                         DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00:00') as hour_group,
@@ -398,16 +395,12 @@ class ApiController extends Controller
                     FROM sensor_data
                     WHERE sensor_id = ?
                 ";
-                $params = [$sensor_id];
-    
-                if ($date_start && $date_end) {
-                    $sql .= " AND DATE(recorded_at) >= ? AND DATE(recorded_at) <= ?";
-                    $params[] = $date_start;
-                    $params[] = $date_end;
-                } else {
-                    $sql .= " AND DATE(recorded_at) = ?";
-                    $params[] = $date_start;
-                }
+                $params = [
+                    $sensor_id,
+                    $start->toDateTimeString(),
+                    $end->toDateTimeString(),
+                ];
+                $sql .= " AND recorded_at >= ? AND recorded_at < ?";
     
                 $sql .= " GROUP BY hour_group ORDER BY hour_group ASC";
     
@@ -451,49 +444,74 @@ class ApiController extends Controller
 
         // Optimization: Cache result for 60 seconds
         return Cache::remember($cacheKey, 60, function () use ($gh_id, $decodedData) {
-            // Optimization: Raw SQL Pivot Query
-            // Bypasses Eloquent overhead for complex joins and aggregation
+            $sensorIds = Cache::remember("sensor_ids_{$gh_id}", 3600, function () use ($gh_id) {
+                return Sensor::where('gh_id', $gh_id)->pluck('id', 'name')->toArray();
+            });
+
+            $sensorIdMap = [
+                'temperature' => $sensorIds['Temperature'] ?? null,
+                'humidity' => $sensorIds['Humidity'] ?? null,
+                'light_intensity' => $sensorIds['Light Intensity'] ?? null,
+                'rssi' => $sensorIds['RSSI'] ?? null,
+            ];
+
+            $caseParams = [
+                $sensorIdMap['temperature'],
+                $sensorIdMap['humidity'],
+                $sensorIdMap['light_intensity'],
+                $sensorIdMap['rssi'],
+            ];
+
+            $inIds = array_values(array_filter($sensorIdMap));
+            if (empty($inIds)) {
+                return response()->json([
+                    'success' => true,
+                    'data' => []
+                ]);
+            }
+
             // Dynamic Filters
             $startTime = $decodedData['start_date'] ?? null;
             $endTime = $decodedData['end_date'] ?? null;
             $nodeId = $decodedData['node_id'] ?? null;
-    
+
+            $placeholders = implode(',', array_fill(0, count($inIds), '?'));
             $sql = "
                 SELECT 
                     sd.node_id,
                     DATE(sd.recorded_at) as date,
                     TIME(sd.recorded_at) as time,
-                    MAX(CASE WHEN s.name = 'Temperature' THEN sd.value END) as temperature,
-                    MAX(CASE WHEN s.name = 'Humidity' THEN sd.value END) as humidity,
-                    MAX(CASE WHEN s.name = 'Light Intensity' THEN sd.value END) as light_intensity,
-                    MAX(CASE WHEN s.name = 'RSSI' THEN sd.value END) as rssi
+                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as temperature,
+                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as humidity,
+                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as light_intensity,
+                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as rssi
                 FROM sensor_data sd
-                JOIN sensors s ON s.id = sd.sensor_id
-                WHERE s.gh_id = ?
+                WHERE sd.sensor_id IN ($placeholders)
             ";
-    
-            $params = [$gh_id];
-    
+
+            $params = array_merge($caseParams, $inIds);
+
             if ($startTime && $endTime) {
-                $sql .= " AND DATE(sd.recorded_at) >= ? AND DATE(sd.recorded_at) <= ?";
-                $params[] = $startTime;
-                $params[] = $endTime;
+                $start = Carbon::parse($startTime)->startOfDay()->toDateTimeString();
+                $end = Carbon::parse($endTime)->addDay()->startOfDay()->toDateTimeString();
+                $sql .= " AND sd.recorded_at >= ? AND sd.recorded_at < ?";
+                $params[] = $start;
+                $params[] = $end;
             }
-    
+
             if ($nodeId) {
                 $sql .= " AND sd.node_id = ?";
                 $params[] = $nodeId;
             }
-    
+
             $sql .= "
                 GROUP BY sd.node_id, sd.recorded_at
                 ORDER BY sd.recorded_at DESC, sd.node_id ASC
                 LIMIT 500
             ";
-    
-            // Optimization: Raw SQL Pivot Query
+
             $sensorData = DB::select($sql, $params);
-    
+
             return response()->json([
                 'success' => true,
                 'data' => $sensorData
