@@ -432,6 +432,9 @@ class ApiController extends Controller
         }
 
         $gh_id = $decodedData['gh_id'];
+        $page = max(1, (int) ($decodedData['page'] ?? 1));
+        $perPage = min(100, max(1, (int) ($decodedData['per_page'] ?? 10)));
+        $offset = ($page - 1) * $perPage;
 
         // Optimization: Raw SQL for check
         $greenhouseExists = DB::selectOne("SELECT 1 FROM greenhouses WHERE id = ?", [$gh_id]);
@@ -439,11 +442,11 @@ class ApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Greenhouse not found.'], 404);
         }
 
-        // Cache Key based on request params
+        // Cache Key based on all request params including pagination
         $cacheKey = 'table_' . md5($dict);
 
         // Optimization: Cache result for 60 seconds
-        return Cache::remember($cacheKey, 60, function () use ($gh_id, $decodedData) {
+        return Cache::remember($cacheKey, 60, function () use ($gh_id, $decodedData, $page, $perPage, $offset) {
             $sensorIds = Cache::remember("sensor_ids_{$gh_id}", 3600, function () use ($gh_id) {
                 return Sensor::where('gh_id', $gh_id)->pluck('id', 'name')->toArray();
             });
@@ -466,7 +469,11 @@ class ApiController extends Controller
             if (empty($inIds)) {
                 return response()->json([
                     'success' => true,
-                    'data' => []
+                    'data' => [],
+                    'total' => 0,
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'last_page' => 1,
                 ]);
             }
 
@@ -476,7 +483,33 @@ class ApiController extends Controller
             $nodeId = $decodedData['node_id'] ?? null;
 
             $placeholders = implode(',', array_fill(0, count($inIds), '?'));
-            $sql = "
+
+            // Build WHERE clause (shared between count and data queries)
+            $whereClause = "sd.sensor_id IN ($placeholders)";
+            $filterParams = $inIds;
+
+            if ($startTime && $endTime) {
+                $start = Carbon::parse($startTime)->startOfDay()->toDateTimeString();
+                $end = Carbon::parse($endTime)->addDay()->startOfDay()->toDateTimeString();
+                $whereClause .= " AND sd.recorded_at >= ? AND sd.recorded_at < ?";
+                $filterParams[] = $start;
+                $filterParams[] = $end;
+            }
+
+            if ($nodeId) {
+                $whereClause .= " AND sd.node_id = ?";
+                $filterParams[] = $nodeId;
+            }
+
+            // 1. Count total rows (distinct groups)
+            $countSql = "SELECT COUNT(*) as total FROM (
+                SELECT 1 FROM sensor_data sd WHERE $whereClause GROUP BY sd.node_id, sd.recorded_at
+            ) as cnt";
+            $totalResult = DB::selectOne($countSql, $filterParams);
+            $total = $totalResult->total ?? 0;
+
+            // 2. Fetch paginated data
+            $dataSql = "
                 SELECT 
                     sd.node_id,
                     DATE(sd.recorded_at) as date,
@@ -486,35 +519,24 @@ class ApiController extends Controller
                     MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as light_intensity,
                     MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as rssi
                 FROM sensor_data sd
-                WHERE sd.sensor_id IN ($placeholders)
-            ";
-
-            $params = array_merge($caseParams, $inIds);
-
-            if ($startTime && $endTime) {
-                $start = Carbon::parse($startTime)->startOfDay()->toDateTimeString();
-                $end = Carbon::parse($endTime)->addDay()->startOfDay()->toDateTimeString();
-                $sql .= " AND sd.recorded_at >= ? AND sd.recorded_at < ?";
-                $params[] = $start;
-                $params[] = $end;
-            }
-
-            if ($nodeId) {
-                $sql .= " AND sd.node_id = ?";
-                $params[] = $nodeId;
-            }
-
-            $sql .= "
+                WHERE $whereClause
                 GROUP BY sd.node_id, sd.recorded_at
                 ORDER BY sd.recorded_at DESC, sd.node_id ASC
-                LIMIT 500
+                LIMIT ? OFFSET ?
             ";
 
-            $sensorData = DB::select($sql, $params);
+            $dataParams = array_merge($caseParams, $filterParams, [$perPage, $offset]);
+            $sensorData = DB::select($dataSql, $dataParams);
+
+            $lastPage = max(1, (int) ceil($total / $perPage));
 
             return response()->json([
                 'success' => true,
-                'data' => $sensorData
+                'data' => $sensorData,
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $perPage,
+                'last_page' => $lastPage,
             ]);
         });
     }

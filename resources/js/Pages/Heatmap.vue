@@ -21,7 +21,7 @@
  * - WATCHERS: Memantau perubahan parameter/data untuk update heatmap
  */
 
-import { onMounted, onUnmounted, ref, watch, computed } from "vue";
+import { onMounted, onUnmounted, ref, watch, computed, nextTick } from "vue";
 import { Head, router } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import Tabs from "@/Components/Tabs.vue";
@@ -66,13 +66,17 @@ const props = defineProps({
 // ===============================
 const activeGH = ref(props.activeGhId);           // Greenhouse yang dipilih
 const activeParameter = ref("temperature");       // Parameter aktif (temperature/humidity/lux)
+const mapHeight = ref('280px');                    // Dynamic map height based on aspect ratio
 const mapContainer = ref(null);                   // Reference ke container div untuk Leaflet
+const mapOpacity = ref(1);                         // Opacity untuk fade transition saat switch GH
+let resizeDebounceTimer = null;                    // Debounce timer untuk ResizeObserver
+let isTransitioning = false;                       // Flag: sedang transisi switch GH
 let autoRefreshInterval = null;                   // Interval untuk auto-refresh
 
 // ===============================
-// AUTO-REFRESH INTERVAL (30 detik)
+// AUTO-REFRESH INTERVAL 
 // ===============================
-const AUTO_REFRESH_SECONDS = 30;
+const AUTO_REFRESH_SECONDS = 300;
 
 // Computed: Latest data time untuk greenhouse aktif
 const currentLatestTime = computed(() => {
@@ -651,26 +655,51 @@ function drawCustomHeatmap(sensorData) {
 let imageOverlay = null;
 
 // Helper function untuk mendapatkan zoom optimal berdasarkan greenhouse
+// ===============================
+// DYNAMIC MAP HEIGHT
+// Menghitung tinggi container map berdasarkan aspect ratio gambar greenhouse
+// agar denah fit sempurna tanpa whitespace di mobile
+// ===============================
+function updateMapHeight() {
+  const container = mapContainer.value;
+  if (!container) return;
+  
+  // Dapatkan lebar container yang tersedia
+  const containerWidth = container.clientWidth || container.offsetWidth;
+  if (containerWidth <= 0) return;
+  
+  const imgWidth = IMAGE_WIDTH.value;
+  const imgHeight = IMAGE_HEIGHT.value;
+  const aspectRatio = imgHeight / imgWidth;
+  
+  // fitBounds padding (harus sama dengan getOptimalZoomSettings)
+  const fitPadding = 10;
+  
+  // Leaflet fitBounds mereserve padding di kiri-kanan,
+  // jadi gambar sebenarnya di-render di area (containerWidth - 2*fitPadding)
+  // Tinggi gambar = (containerWidth - 2*fitPadding) * aspectRatio
+  // Container height = tinggi gambar + 2*fitPadding (atas-bawah)
+  const availableWidth = containerWidth - (fitPadding * 2);
+  const imageHeight = availableWidth * aspectRatio;
+  let calculatedHeight = Math.round(imageHeight + (fitPadding * 2));
+  
+  // Minimum dan maximum height
+  const minHeight = 200;
+  const maxHeight = window.innerWidth >= 1024 ? 500 : 450;
+  calculatedHeight = Math.max(minHeight, Math.min(maxHeight, calculatedHeight));
+  
+  mapHeight.value = calculatedHeight + 'px';
+}
+
 function getOptimalZoomSettings() {
   const isMobile = window.innerWidth < 768;
   
-  // GH 2 punya rasio aspek yang berbeda (640x500 = lebih square)
-  // GH 1 punya rasio lebih landscape (1024x450)
-  if (activeGH.value === 2) {
-    // GH 2: gambar lebih square, butuh zoom berbeda
-    return {
-      minZoom: isMobile ? -0.75 : 0,
-      fitMaxZoom: isMobile ? 0.4 : 0.5,
-      padding: isMobile ? [5, 5] : [20, 20]
-    };
-  } else {
-    // GH 1: gambar landscape
-    return {
-      minZoom: isMobile ? -1 : -0.5,
-      fitMaxZoom: isMobile ? 0 : -0.5,
-      padding: [5, 5]
-    };
-  }
+  // Untuk semua GH: padding minimal agar denah fit ke container
+  return {
+    minZoom: isMobile ? -1 : -0.5,
+    fitMaxZoom: 4,  // Biarkan fitBounds menentukan zoom terbaik
+    padding: [10, 10]
+  };
 }
 
 function initMap() {
@@ -780,8 +809,37 @@ function stopAutoRefresh() {
 
 // Saat komponen di-mount, inisialisasi Leaflet map dan auto-refresh
 onMounted(() => {
-  initMap();
-  startAutoRefresh();
+  // Hitung tinggi map sebelum inisialisasi
+  updateMapHeight();
+  
+  // Tunggu sebentar agar DOM terupdate dengan tinggi baru
+  nextTick(() => {
+    initMap();
+    startAutoRefresh();
+  });
+  
+  // ResizeObserver untuk recalculate saat resize window
+  // DEBOUNCED: Hanya fire setelah 350ms stabil (setelah CSS transition selesai)
+  if (window.ResizeObserver && mapContainer.value) {
+    const resizeObserver = new ResizeObserver(() => {
+      // Skip jika sedang transisi GH switch (ditangani oleh watcher)
+      if (isTransitioning) return;
+      
+      clearTimeout(resizeDebounceTimer);
+      resizeDebounceTimer = setTimeout(() => {
+        updateMapHeight();
+        if (map) {
+          nextTick(() => {
+            map.invalidateSize();
+            const bounds = [[0, 0], [IMAGE_HEIGHT.value, IMAGE_WIDTH.value]];
+            const zoomSettings = getOptimalZoomSettings();
+            map.fitBounds(bounds, { padding: zoomSettings.padding, maxZoom: zoomSettings.fitMaxZoom });
+          });
+        }
+      }, 350);
+    });
+    resizeObserver.observe(mapContainer.value);
+  }
 });
 
 // Saat komponen di-unmount, hentikan auto-refresh
@@ -797,42 +855,57 @@ onUnmounted(() => {
 // OPTIMIZED: Tidak perlu request ke server! Data sudah di-preload.
 // Cukup update map overlay dan re-render heatmap dengan data yang sudah ada.
 watch(activeGH, (newGhId) => {
-  // Update image overlay dan bounds ke greenhouse yang baru
-  if (imageOverlay && map) {
-    // Bounds baru sesuai dimensi gambar greenhouse yang dipilih
-    const bounds = [
-      [0, 0],
-      [IMAGE_HEIGHT.value, IMAGE_WIDTH.value],
-    ];
+  if (!imageOverlay || !map) return;
+  
+  isTransitioning = true;
+  
+  // Step 1: Fade out map content
+  mapOpacity.value = 0;
+  
+  // Step 2: Setelah fade out selesai (300ms), update height + content
+  setTimeout(() => {
+    // Update tinggi container berdasarkan aspect ratio GH baru
+    updateMapHeight();
     
-    // Remove old overlay dan tambah yang baru
-    map.removeLayer(imageOverlay);
-    imageOverlay = L.imageOverlay(currentGreenhouseImage.value, bounds).addTo(map);
-    
-    // Update map bounds dan fit ke gambar baru dengan zoom optimal
-    const zoomSettings = getOptimalZoomSettings();
-    
-    // Update minZoom sesuai greenhouse
-    map.setMinZoom(zoomSettings.minZoom);
-    
-    map.setMaxBounds([
-      [-20, -20],
-      [IMAGE_HEIGHT.value + 20, IMAGE_WIDTH.value + 20],
-    ]);
-    map.fitBounds(bounds, { padding: zoomSettings.padding, maxZoom: zoomSettings.fitMaxZoom });
-    
-    // Pindahkan image ke belakang agar heatmap tetap di atas
-    imageOverlay.bringToBack();
-    
-    // Clear dan redraw heatmap dengan posisi node baru
-    if (customHeatLayer) {
-      map.removeLayer(customHeatLayer);
-      customHeatLayer = null;
-    }
-    
-    // OPTIMIZED: Update heatmap langsung dengan data yang sudah ada
-    updateHeatmap();
-  }
+    // Step 3: Setelah height transition selesai (300ms), update Leaflet
+    setTimeout(() => {
+      const bounds = [
+        [0, 0],
+        [IMAGE_HEIGHT.value, IMAGE_WIDTH.value],
+      ];
+      
+      // Remove old overlay dan tambah yang baru
+      map.removeLayer(imageOverlay);
+      imageOverlay = L.imageOverlay(currentGreenhouseImage.value, bounds).addTo(map);
+      
+      const zoomSettings = getOptimalZoomSettings();
+      map.setMinZoom(zoomSettings.minZoom);
+      
+      // Invalidate size karena container height sudah berubah
+      map.invalidateSize();
+      
+      map.setMaxBounds([
+        [-20, -20],
+        [IMAGE_HEIGHT.value + 20, IMAGE_WIDTH.value + 20],
+      ]);
+      map.fitBounds(bounds, { padding: zoomSettings.padding, maxZoom: zoomSettings.fitMaxZoom });
+      
+      imageOverlay.bringToBack();
+      
+      // Clear dan redraw heatmap
+      if (customHeatLayer) {
+        map.removeLayer(customHeatLayer);
+        customHeatLayer = null;
+      }
+      updateHeatmap();
+      
+      // Step 4: Fade in map content
+      requestAnimationFrame(() => {
+        mapOpacity.value = 1;
+        isTransitioning = false;
+      });
+    }, 350); // Tunggu height transition CSS selesai
+  }, 300); // Tunggu fade out selesai
 });
 
 // Watch 2: Saat user switch parameter (Temperature/Humidity/Light Intensity)
@@ -892,6 +965,7 @@ watch(
             <div
               ref="mapContainer"
               class="map-view"
+              :style="{ height: mapHeight, opacity: mapOpacity }"
             ></div>
           </div>
 
@@ -1020,28 +1094,12 @@ watch(
 
 .map-view {
   width: 100%;
-  height: 280px; /* Mobile default */
+  /* height di-set secara dynamic via inline style berdasarkan aspect ratio */
+  height: 280px; /* Fallback jika JS belum jalan */
   border: 1px solid #d1d5db;
   border-radius: 0.5rem;
   overflow: hidden;
-}
-
-@media (min-width: 480px) {
-  .map-view {
-    height: 350px;
-  }
-}
-
-@media (min-width: 640px) {
-  .map-view {
-    height: 400px;
-  }
-}
-
-@media (min-width: 1024px) {
-  .map-view {
-    height: 450px;
-  }
+  transition: height 0.3s ease, opacity 0.3s ease;
 }
 
 /* ===========================

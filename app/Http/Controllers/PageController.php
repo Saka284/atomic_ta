@@ -71,62 +71,12 @@ class PageController extends Controller
 
     public function table()
     {
-        $allData = [];
         $greenhouses = Cache::remember('greenhouses', 3600, function () {
-            return Greenhouse::select('id')->get();
+            return Greenhouse::select('id', 'name')->get();
         });
 
-        foreach ($greenhouses as $gh) {
-            $sensorIds = Cache::remember("sensor_ids_{$gh->id}", 3600, function () use ($gh) {
-                return Sensor::where('gh_id', $gh->id)->pluck('id', 'name')->toArray();
-            });
-
-            $sensorIdMap = [
-                'temperature' => $sensorIds['Temperature'] ?? null,
-                'humidity' => $sensorIds['Humidity'] ?? null,
-                'light_intensity' => $sensorIds['Light Intensity'] ?? null,
-                'rssi' => $sensorIds['RSSI'] ?? null,
-            ];
-
-            $caseParams = [
-                $sensorIdMap['temperature'],
-                $sensorIdMap['humidity'],
-                $sensorIdMap['light_intensity'],
-                $sensorIdMap['rssi'],
-            ];
-
-            $inIds = array_values(array_filter($sensorIdMap));
-
-            $allData[$gh->id] = Cache::remember("table_gh_{$gh->id}", 60, function () use ($caseParams, $inIds) {
-                if (empty($inIds)) {
-                    return [];
-                }
-
-                $placeholders = implode(',', array_fill(0, count($inIds), '?'));
-                $sql = "
-                    SELECT 
-                        sd.node_id,
-                        DATE(sd.recorded_at) as date,
-                        TIME(sd.recorded_at) as time,
-                        MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as temperature,
-                        MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as humidity,
-                        MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as light_intensity,
-                        MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as rssi
-                    FROM sensor_data sd
-                    WHERE sd.sensor_id IN ($placeholders)
-                    GROUP BY sd.node_id, sd.recorded_at
-                    ORDER BY sd.recorded_at DESC
-                    LIMIT 500
-                ";
-
-                $params = array_merge($caseParams, $inIds);
-
-                return DB::select($sql, $params);
-            });
-        }
-        
         return Inertia::render('Table', [
-            'allTableData' => $allData
+            'greenhouses' => $greenhouses,
         ]);
     }
 
