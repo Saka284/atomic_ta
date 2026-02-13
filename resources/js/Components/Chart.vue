@@ -158,7 +158,6 @@ const upsertChart = async () => {
     const chart = chartInstance.value;
     chart.data.labels = chartLabels;
     chart.data.datasets = datasetSource;
-    chart.options = getChartOptions();
     chart.update("none");
 };
 
