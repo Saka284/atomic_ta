@@ -7,11 +7,13 @@ $options = getopt('', [
     'ref::',
     'output::',
     'force',
+    'fail-on-threshold',
 ]);
 
 $ref = $options['ref'] ?? 'origin/main';
 $output = $options['output'] ?? 'benchmarks/baseline.json';
 $force = array_key_exists('force', $options);
+$failOnThreshold = array_key_exists('fail-on-threshold', $options);
 
 if (file_exists($output) && !$force) {
     fwrite(STDOUT, "Baseline already exists: {$output}\n");
@@ -103,7 +105,12 @@ if ($exit !== 0) {
 }
 
 $outputAbs = $root . DIRECTORY_SEPARATOR . $output;
-$exit = $run('php artisan bench:endpoints --output=' . escapeshellarg($outputAbs) . ' --fail-on-threshold', $worktreeDir);
+$benchCmd = 'php artisan bench:endpoints --output=' . escapeshellarg($outputAbs);
+if ($failOnThreshold) {
+    $benchCmd .= ' --fail-on-threshold';
+}
+
+$exit = $run($benchCmd, $worktreeDir);
 if ($exit !== 0) {
     fwrite(STDERR, "Benchmark run failed in baseline worktree.\n");
     $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
