@@ -3,12 +3,14 @@ import { computed } from 'vue';
 import BreezeButton from '@/Components/Button.vue';
 import BreezeGuestLayout from '@/Layouts/Guest.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { useLocale } from "@/composables/useLocale";
 
 const props = defineProps({
     status: String,
 });
 
 const form = useForm();
+const { t } = useLocale();
 
 const submit = () => {
     form.post(route('verification.send'));
@@ -19,23 +21,23 @@ const verificationLinkSent = computed(() => props.status === 'verification-link-
 
 <template>
     <BreezeGuestLayout>
-        <Head title="Email Verification" />
+        <Head :title="t('auth.verify_email_title')" />
 
         <div class="mb-4 text-sm text-gray-600">
-            Thanks for signing up! Before getting started, could you verify your email address by clicking on the link we just emailed to you? If you didn't receive the email, we will gladly send you another.
+            {{ t("auth.verify_email_desc") }}
         </div>
 
         <div class="mb-4 font-medium text-sm text-green-600" v-if="verificationLinkSent" >
-            A new verification link has been sent to the email address you provided during registration.
+            {{ t("auth.verification_link_sent") }}
         </div>
 
         <form @submit.prevent="submit">
             <div class="mt-4 flex items-center justify-between">
                 <BreezeButton :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Resend Verification Email
+                    {{ t("auth.resend_verification_email") }}
                 </BreezeButton>
 
-                <Link :href="route('logout')" method="post" as="button" class="underline text-sm text-gray-600 hover:text-gray-900">Log Out</Link>
+                <Link :href="route('logout')" method="post" as="button" class="underline text-sm text-gray-600 hover:text-gray-900">{{ t("layout.logout") }}</Link>
             </div>
         </form>
     </BreezeGuestLayout>

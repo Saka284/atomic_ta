@@ -14,7 +14,7 @@ import { useLocale } from "@/composables/useLocale";
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 const toast = useToast();
-const { t } = useLocale();
+const { t, locale } = useLocale();
 
 const { greenhouses, auth, latestData } = usePage().props;
 const daterange = ref();
@@ -22,21 +22,21 @@ const isExporting = ref(false);
 const selectedGreenhouse = ref("");
 const rowImageLoading = ref({});
 
-const actuators = ref([
+const actuators = computed(() => [
     {
-        name: "Exhaust Fan",
+        name: t("monitoring.exhaust_fan"),
         icon: "fas fa-fan", // Font Awesome icon class
         color: "text-yellow-500",
         status: false, // false = off, true = on
     },
     {
-        name: "Dehumidifier",
+        name: t("monitoring.dehumidifier"),
         icon: "fas fa-tint",
         color: "text-cyan-500",
         status: false,
     },
     {
-        name: "Drum Fan",
+        name: t("monitoring.blower"),
         icon: "fas fa-fan",
         color: "text-red-500",
         status: false,
@@ -140,7 +140,10 @@ const paginationPageSizeSelector = ref([5, 10, 20]);
 const gridApiMap = ref({});
 
 const setText = (selector, text) => {
-    document.querySelector(selector).innerHTML = text;
+    const element = document.querySelector(selector);
+    if (element) {
+        element.innerHTML = text;
+    }
 };
 
 const onPaginationChanged = (gh_id) => {
@@ -149,7 +152,9 @@ const onPaginationChanged = (gh_id) => {
         const currentPage = gridApiMap.value[gh_id].paginationGetCurrentPage();
 
         let paginationText =
-            totalPages > 0 ? `${currentPage + 1} of ${totalPages}` : "No Data";
+            totalPages > 0
+                ? `${currentPage + 1} ${t("common.of")} ${totalPages}`
+                : t("camera.page_no_data");
         setText("#lbPages" + gh_id, paginationText);
     }
 };
@@ -212,6 +217,12 @@ onMounted(() => {
     });
 });
 
+watch(locale, () => {
+    greenhouses.forEach((greenhouse) => {
+        onPaginationChanged(greenhouse.id);
+    });
+});
+
 const onGridReady = (params, gh_id) => {
     gridApiMap.value[gh_id] = params.api;
 };
@@ -262,7 +273,9 @@ const exportData = async () => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `Laporan_Camera_${payload.start_date}_sd_${payload.end_date}.zip`;
+        const filePrefix =
+            locale.value === "id" ? "laporan_kamera" : "camera_report";
+        a.download = `${filePrefix}_${payload.start_date}_to_${payload.end_date}.zip`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -337,7 +350,7 @@ const onRowSelected = (event, gh_id) => {
                                     v-model="selectedGreenhouse"
                                     class="w-3/4 sm:w-1/2 p-1.5 border rounded-lg text-center focus:ring focus:ring-blue-300 hover:border-blue-400 transition"
                                 >
-                                    <option value="">All</option>
+                                    <option value="">{{ t("camera.all") }}</option>
                                     <option
                                         v-for="greenhouse in greenhouses"
                                         :key="greenhouse.id"
@@ -407,7 +420,11 @@ const onRowSelected = (event, gh_id) => {
                                 :class="actuator.status ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
                                 class="px-3 py-1 text-xs font-bold rounded-full"
                             >
-                                {{ actuator.status ? 'ON' : 'OFF' }}
+                                {{
+                                    actuator.status
+                                        ? t("monitoring.on")
+                                        : t("monitoring.off")
+                                }}
                             </div>
                         </div>
                     </div>
@@ -421,7 +438,7 @@ const onRowSelected = (event, gh_id) => {
                     >
                         <div class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4">
                             <p class="text-lg font-semibold leading-tight">
-                                Camera {{ greenhouse.name }}
+                                {{ t("monitoring.camera") }} {{ greenhouse.name }}
                             </p>
                             
                             <div class="flex flex-col items-end">
@@ -453,7 +470,7 @@ const onRowSelected = (event, gh_id) => {
                                         rowImageMap[greenhouse.id]?.image ||
                                         '/images/no-image.svg'
                                     "
-                                    alt="image"
+                                    :alt="t('title.camera')"
                                     class="w-full h-full object-contain"
                                     @load="
                                         rowImageLoading[greenhouse.id] = false
@@ -527,7 +544,7 @@ const onRowSelected = (event, gh_id) => {
                                     </div>
                                     <div>
                                         <span :id="'lbPages' + greenhouse.id"
-                                            >- of -</span
+                                            >- {{ t("common.of") }} -</span
                                         >
                                     </div>
                                     <div class="flex gap-2">
