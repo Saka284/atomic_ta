@@ -803,7 +803,7 @@ class ApiController extends Controller
         }
 
         $page = max(1, (int) ($decodedData['page'] ?? 1));
-        $perPage = min(200, max(1, (int) ($decodedData['per_page'] ?? 20)));
+        $perPage = min(200, max(1, (int) ($decodedData['per_page'] ?? 5)));
         $offset = ($page - 1) * $perPage;
 
         $greenhouseExists = Cache::remember("greenhouse_exists_{$gh_id}", 3600, function () use ($gh_id) {
