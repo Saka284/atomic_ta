@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from "vue";
+import { ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { debounce } from "lodash";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import { Head, usePage } from "@inertiajs/vue3";
@@ -9,10 +9,12 @@ import { AllCommunityModule, ModuleRegistry, themeAlpine } from "ag-grid-communi
 import VueDatePicker from "@vuepic/vue-datepicker";
 import "@vuepic/vue-datepicker/dist/main.css";
 import { useToast } from "vue-toastification";
+import { useLocale } from "@/composables/useLocale";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 const toast = useToast();
+const { t } = useLocale();
 
 const { greenhouses } = usePage().props;
 const activeTab = ref(greenhouses[0].id);
@@ -27,11 +29,11 @@ const currentPage = ref(1);
 const perPage = ref(10);
 const totalRows = ref(0);
 const lastPage = ref(1);
-
-// Server-side sort & filter state
-let gridApi = null;
-const currentSort = ref({ sort_by: null, sort_dir: null });
-const currentColumnFilters = ref({});
+const responseCache = new Map();
+const CACHE_TTL_MS = 30000;
+const CACHE_LIMIT = 40;
+let activeAbortController = null;
+let latestRequestId = 0;
 
 const columnDefs = ref([
     {
@@ -45,109 +47,177 @@ const columnDefs = ref([
         sortable: false,
         resizable: false,
     },
-    { headerName: "Node", field: "node_id", filter: "agNumberColumnFilter", minWidth: 80, maxWidth: 90 },
+    { headerName: "Node", field: "node_id", filter: false, sortable: false, minWidth: 80, maxWidth: 90 },
     {
         headerName: "Date",
         field: "date",
-        filter: "agTextColumnFilter",
+        filter: false,
+        sortable: false,
         minWidth: 120,
     },
     {
         headerName: "Time",
         field: "time",
-        filter: "agTextColumnFilter",
+        filter: false,
+        sortable: false,
         minWidth: 100,
     },
     {
         headerName: "Temperature (°C)",
         field: "temperature",
-        filter: "agNumberColumnFilter",
+        filter: false,
+        sortable: false,
         minWidth: 150,
     },
     {
         headerName: "Humidity (%)",
         field: "humidity",
-        filter: "agNumberColumnFilter",
+        filter: false,
+        sortable: false,
         minWidth: 130,
     },
     {
         headerName: "Light Intensity (lx)",
         field: "light_intensity",
-        filter: "agNumberColumnFilter",
+        filter: false,
+        sortable: false,
         minWidth: 160,
     },
     {
         headerName: "RSSI (dBm)",
         field: "rssi",
-        filter: "agNumberColumnFilter",
+        filter: false,
+        sortable: false,
         minWidth: 120,
     },
 ]);
 const defaultColDef = ref({
     flex: 1,
     minWidth: 100,
-    filter: true,
-    sortable: true,
     resizable: false,
     suppressMovable: true,
+    suppressHeaderMenuButton: true,
 });
 
 // Computed display values
 const fromRow = () => totalRows.value === 0 ? 0 : (currentPage.value - 1) * perPage.value + 1;
 const toRow = () => Math.min(currentPage.value * perPage.value, totalRows.value);
 
-const fetchData = async () => {
+const buildQueryData = () => {
+    const queryData = {
+        gh_id: activeTab.value,
+        page: currentPage.value,
+        per_page: perPage.value,
+    };
+
+    if (daterange.value) {
+        queryData.start_date = formatDate(daterange.value[0]);
+        queryData.end_date = formatDate(daterange.value[1]);
+    }
+
+    if (selectedNode.value) {
+        queryData.node_id = selectedNode.value;
+    }
+
+    return queryData;
+};
+
+const buildCacheKey = (queryData) => JSON.stringify(queryData);
+
+const applyTablePayload = (payload) => {
+    rowData.value = payload.data || [];
+    totalRows.value = payload.total || 0;
+    lastPage.value = payload.last_page || 1;
+};
+
+const getCachedPayload = (cacheKey) => {
+    const cached = responseCache.get(cacheKey);
+    if (!cached) return null;
+
+    if (Date.now() - cached.timestamp > CACHE_TTL_MS) {
+        responseCache.delete(cacheKey);
+        return null;
+    }
+
+    return cached.payload;
+};
+
+const setCachedPayload = (cacheKey, payload) => {
+    if (responseCache.size >= CACHE_LIMIT) {
+        const oldestKey = responseCache.keys().next().value;
+        responseCache.delete(oldestKey);
+    }
+
+    responseCache.set(cacheKey, {
+        timestamp: Date.now(),
+        payload,
+    });
+};
+
+const fetchData = async ({ force = false } = {}) => {
+    const requestId = ++latestRequestId;
+
+    if (activeAbortController) {
+        activeAbortController.abort();
+        activeAbortController = null;
+    }
+
+    const queryData = buildQueryData();
+    const cacheKey = buildCacheKey(queryData);
+
+    if (!force) {
+        const cachedPayload = getCachedPayload(cacheKey);
+        if (cachedPayload) {
+            applyTablePayload(cachedPayload);
+            isLoading.value = false;
+            return;
+        }
+    }
+
+    activeAbortController = new AbortController();
+
     try {
         isLoading.value = true;
 
-        const queryData = {
-            gh_id: activeTab.value,
-            page: currentPage.value,
-            per_page: perPage.value,
-        };
-
-        if (daterange.value) {
-            queryData.start_date = formatDate(daterange.value[0]);
-            queryData.end_date = formatDate(daterange.value[1]);
-        }
-
-        if (selectedNode.value) {
-            queryData.node_id = selectedNode.value;
-        }
-
-        // Add sort params
-        if (currentSort.value.sort_by) {
-            queryData.sort_by = currentSort.value.sort_by;
-            queryData.sort_dir = currentSort.value.sort_dir;
-        }
-
-        // Add column filter params
-        if (Object.keys(currentColumnFilters.value).length > 0) {
-            queryData.column_filters = currentColumnFilters.value;
-        }
-
-        const url = `/api/table-per-gh?dict=` + JSON.stringify(queryData);
+        const url = `/api/table-per-gh?dict=${encodeURIComponent(
+            JSON.stringify(queryData),
+        )}`;
 
         const response = await fetch(url, {
             method: "GET",
             headers: { "Content-Type": "application/json" },
+            signal: activeAbortController.signal,
         });
+
+        if (!response.ok) {
+            throw new Error(`Request failed with status ${response.status}`);
+        }
 
         const jsonData = await response.json();
 
-        if (jsonData.success && Array.isArray(jsonData.data)) {
-            rowData.value = jsonData.data;
-            totalRows.value = jsonData.total;
-            lastPage.value = jsonData.last_page;
-        } else {
-            toast.error("Gagal memuat data!");
-            console.error("Data format error:", jsonData);
+        if (requestId !== latestRequestId) {
+            return;
         }
+
+        if (jsonData.success && Array.isArray(jsonData.data)) {
+            setCachedPayload(cacheKey, jsonData);
+            applyTablePayload(jsonData);
+            return;
+        }
+
+        toast.error(t("table.failed_load_data"));
+        console.error("Data format error:", jsonData);
     } catch (error) {
-        toast.error("Gagal memuat data!");
+        if (error?.name === "AbortError") {
+            return;
+        }
+
+        toast.error(t("table.failed_load_data"));
         console.error("Fetch error:", error);
     } finally {
-        isLoading.value = false;
+        if (requestId === latestRequestId) {
+            isLoading.value = false;
+        }
     }
 };
 
@@ -168,47 +238,9 @@ const onPerPageChange = () => {
     fetchData();
 };
 
-// AG Grid event: sort changed
-const onSortChanged = (event) => {
-    const sortModel = event.api.getColumnState()
-        .filter(col => col.sort)
-        .map(col => ({ colId: col.colId, sort: col.sort }));
-
-    if (sortModel.length > 0) {
-        currentSort.value = {
-            sort_by: sortModel[0].colId,
-            sort_dir: sortModel[0].sort,
-        };
-    } else {
-        currentSort.value = { sort_by: null, sort_dir: null };
-    }
-    currentPage.value = 1;
-    fetchData();
-};
-
-// AG Grid event: filter changed
-const onFilterChanged = (event) => {
-    const filterModel = event.api.getFilterModel();
-    currentColumnFilters.value = filterModel;
-    currentPage.value = 1;
-    fetchData();
-};
-
-// AG Grid ready
-const onGridReady = (params) => {
-    gridApi = params.api;
-};
-
 // On tab switch, reset everything and fetch
 watch(activeTab, () => {
     currentPage.value = 1;
-    currentSort.value = { sort_by: null, sort_dir: null };
-    currentColumnFilters.value = {};
-    // Reset AG Grid filter/sort state
-    if (gridApi) {
-        gridApi.setFilterModel(null);
-        gridApi.applyColumnState({ defaultState: { sort: null } });
-    }
     debouncedFetchData();
 });
 
@@ -222,6 +254,13 @@ onMounted(() => {
     fetchData();
 });
 
+onBeforeUnmount(() => {
+    debouncedFetchData.cancel();
+    if (activeAbortController) {
+        activeAbortController.abort();
+    }
+});
+
 const formatDate = (date) => {
     return new Date(date).toISOString().split("T")[0];
 };
@@ -230,7 +269,7 @@ const exportData = async () => {
     isExporting.value = true;
 
     if (!daterange.value) {
-        toast.warning("Rentang tanggal belum dipilih");
+        toast.warning(t("table.date_range_required"));
         isExporting.value = false;
         return;
     }
@@ -263,23 +302,23 @@ const exportData = async () => {
         a.click();
         document.body.removeChild(a);
 
-        toast.success("Excel berhasil diunduh!");
+        toast.success(t("table.excel_downloaded"));
 
         isExporting.value = false;
     } catch (error) {
-        toast.error("Gagal mengunduh file!");
+        toast.error(t("table.failed_download"));
         console.error(error);
         isExporting.value = false;
     }
 };
 </script>
 <template>
-    <Head title="Table" />
+    <Head :title="t('title.table')" />
 
     <BreezeAuthenticatedLayout :titlePage="'Table'">
         <template #header>
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                Table
+                {{ t("title.table") }}
             </h2>
         </template>
 
@@ -357,9 +396,6 @@ const exportData = async () => {
                             :domLayout="'autoHeight'"
                             :theme="themeAlpine"
                             :suppressPaginationPanel="true"
-                            @grid-ready="onGridReady"
-                            @sort-changed="onSortChanged"
-                            @filter-changed="onFilterChanged"
                         >
                         </ag-grid-vue>
                     </div>
