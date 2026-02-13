@@ -60,7 +60,7 @@ const gridOptions = ref({
 // column
 const columnDefs = ref([
     {
-        headerName: "Datetime",
+        headerName: "Date Time",
         field: "recorded_at",
         sortable: true,
         resizable: false,
@@ -68,7 +68,7 @@ const columnDefs = ref([
         flex: 1,
     },
     {
-        headerName: "Akurasi Kabut",
+        headerName: "Fog Accuracy",
         field: "fog_percentage",
         sortable: true,
         resizable: false,
@@ -89,6 +89,11 @@ const columnDefs = ref([
         cellClass: "text-center",
         cellRenderer: (params) => {
             const status = params.value || "Unknown";
+            const statusLabelMap = {
+                Berkabut: "Foggy",
+                "Tidak Berkabut": "Clear",
+                Unknown: "Unknown",
+            };
 
             const statusClasses = {
                 Berkabut: "bg-sky-100 text-sky-600",
@@ -108,7 +113,7 @@ const columnDefs = ref([
 
             const div = document.createElement("div");
             div.className = `my-auto px-3 py-2 rounded-full text-xs font-semibold ${badgeClass}`;
-            div.textContent = status;
+            div.textContent = statusLabelMap[status] || status;
             div.style.display = "inline-block";
 
             wrapper.appendChild(div);
@@ -183,14 +188,14 @@ const fetchData = async (gh_id) => {
             rowDataMap.value[gh_id] = jsonData.data;
             rowImageMap.value[gh_id] = jsonData.data[0] || [];
         } else {
-            toast.error("Gagal memuat data!");
+            toast.error("Failed to load data.");
             console.error("Data format error: Expected array", jsonData);
         }
 
         hideLoading(gh_id);
         rowImageLoading.value[gh_id] = false;
     } catch (error) {
-        toast.error("Gagal memuat data!");
+        toast.error("Failed to load data.");
         console.error("Fetch error:", error);
         hideLoading(gh_id);
         rowImageLoading.value[gh_id] = false;
@@ -230,7 +235,7 @@ const exportData = async () => {
 
     // 1. Cek tanggal
     if (!daterange.value) {
-        toast.warning("Rentang tanggal belum dipilih");
+        toast.warning("Date range is required.");
         isExporting.value = false;
         return;
     }
@@ -260,15 +265,15 @@ const exportData = async () => {
         a.click();
         document.body.removeChild(a);
 
-        toast.success("File ZIP berhasil diunduh!");
+        toast.success("ZIP file downloaded successfully.");
 
         isExporting.value = false;
     } catch (error) {
         console.error(error);
         if (error.response && error.response.status === 404) {
-            toast.error("Tidak ada data pada tanggal tersebut.");
+            toast.error("No data found for selected date range.");
         } else {
-            toast.error("Gagal mengunduh file!");
+            toast.error("Failed to download file.");
         }
         isExporting.value = false;
     }
@@ -422,7 +427,7 @@ const onRowSelected = (event, gh_id) => {
                                 <div v-if="rowImageMap[greenhouse.id]?.fog_percentage" 
                                     class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm">
                                     <span class="text-xs font-bold">
-                                        Akurasi: {{ rowImageMap[greenhouse.id]?.fog_percentage }}%
+                                        Accuracy: {{ rowImageMap[greenhouse.id]?.fog_percentage }}%
                                     </span>
                                 </div>
                             </div>
