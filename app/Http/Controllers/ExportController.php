@@ -19,6 +19,7 @@ class ExportController extends Controller
             'gh_id' => 'required|integer',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
+            'node_id' => 'nullable|integer|min:1',
         ]);
 
         $startDate = date('Y-m-d', strtotime($request->start_date));
@@ -26,7 +27,12 @@ class ExportController extends Controller
         $fileName = "sensor_data_{$startDate}_to_{$endDate}.xlsx";
 
         return Excel::download(
-            new SensorDataExport($request->gh_id, $request->start_date, $request->end_date),
+            new SensorDataExport(
+                $request->gh_id,
+                $request->start_date,
+                $request->end_date,
+                $request->node_id
+            ),
             $fileName
         );
     }

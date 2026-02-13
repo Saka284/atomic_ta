@@ -125,6 +125,8 @@ class ScheduleController extends Controller
             // Invalidate Cache for both Gateway and Web
             Cache::forget("schedule_gateway_{$request->gh_id}");
             Cache::forget("schedule_web_{$request->gh_id}");
+            Cache::forget('controlling_schedules');
+            Cache::forget('monitoring_actuator_status');
 
             return response()->json([
                 'success' => true,
