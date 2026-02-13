@@ -130,6 +130,12 @@ const setChartRange = (sensor_id, range) => {
 const isChartRangeActive = (sensor_id, range) =>
     getChartRange(sensor_id) === range;
 
+const setCustomRangeFromDatePicker = (sensor_id) => {
+    if (getChartRange(sensor_id) !== "custom") {
+        chartRange.value[sensor_id] = "custom";
+    }
+};
+
 const clearTime = (sensorId) => {
     if (datetime.value[sensorId]) {
         datetime.value[sensorId].time = "";
@@ -608,18 +614,20 @@ watch(activeTab, async (newTab) => {
                                         </select>
 
                                         <VueDatePicker
-                                            class="w-[150px] min-w-[150px] shrink-0"
+                                            class="monitoring-date-picker shrink-0"
+                                            style="width: 112px; min-width: 112px"
                                             v-model="
                                                 getDateTime(sensor.sensor_id)
                                                     .date
                                             "
                                             range
                                             position="right"
-                                            placeholder="Tanggal"
+                                            placeholder="Tgl"
                                             :format="formatDateRangeDisplay"
                                             :enable-time-picker="false"
-                                            :disabled="
-                                                isQuickRangeActive(
+                                            :teleport="true"
+                                            @update:model-value="
+                                                setCustomRangeFromDatePicker(
                                                     sensor.sensor_id
                                                 )
                                             "
@@ -777,3 +785,13 @@ watch(activeTab, async (newTab) => {
         </div>
     </BreezeAuthenticatedLayout>
 </template>
+
+<style scoped>
+:deep(.monitoring-date-picker .dp__input) {
+    min-height: 2.5rem;
+    height: 2.5rem;
+    padding-right: 0.5rem;
+    padding-left: 2rem;
+    font-size: 0.75rem;
+}
+</style>
