@@ -26,9 +26,12 @@ import { Head, router } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import Tabs from "@/Components/Tabs.vue";
 import DigitalClock from "@/Components/DigitalClock.vue";
+import { useLocale } from "@/composables/useLocale";
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+
+const { t } = useLocale();
 
 // ===============================
 // PROPS DARI CONTROLLER
@@ -951,11 +954,11 @@ watch(
 </script>
 
 <template>
-  <Head title="Heatmap" />
+  <Head :title="t('title.heatmap')" />
   <BreezeAuthenticatedLayout titlePage="Heatmap">
     <template #header>
       <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-        Heatmap
+        {{ t("title.heatmap") }}
       </h2>
     </template>
 
@@ -972,11 +975,11 @@ watch(
         <div class="bg-white overflow-hidden shadow-sm rounded-lg p-4 mt-3">
           <div class="flex flex-col w-full">
             <div class="flex justify-between">
-              <p>Time</p>
+              <p>{{ t("monitoring.time") }}</p>
               <DigitalClock />
             </div>
             <div class="flex justify-between">
-              <p>Latest Data</p>
+              <p>{{ t("monitoring.latest_data") }}</p>
               <p>{{ currentLatestTime }}</p>
             </div>
           </div>
