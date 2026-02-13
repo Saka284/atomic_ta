@@ -36,7 +36,7 @@ const actuators = ref([
         status: false,
     },
     {
-        name: "Drum Fan",
+        name: "Circulation Fan",
         icon: "fas fa-fan",
         color: "text-red-500",
         status: false,
