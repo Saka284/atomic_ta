@@ -673,7 +673,7 @@ function updateMapHeight() {
   const aspectRatio = imgHeight / imgWidth;
   
   // fitBounds padding (harus sama dengan getOptimalZoomSettings)
-  const fitPadding = 10;
+  const fitPadding = window.innerWidth < 768 ? 0 : 10;
   
   // Leaflet fitBounds mereserve padding di kiri-kanan,
   // jadi gambar sebenarnya di-render di area (containerWidth - 2*fitPadding)
@@ -684,21 +684,43 @@ function updateMapHeight() {
   let calculatedHeight = Math.round(imageHeight + (fitPadding * 2));
   
   // Minimum dan maximum height
-  const minHeight = 200;
+  const minHeight = window.innerWidth < 768 ? 120 : 200;
   const maxHeight = window.innerWidth >= 1024 ? 500 : 450;
   calculatedHeight = Math.max(minHeight, Math.min(maxHeight, calculatedHeight));
   
   mapHeight.value = calculatedHeight + 'px';
 }
 
+function getFitMinZoom(fitPadding) {
+  const container = mapContainer.value;
+  if (!container) return window.innerWidth < 768 ? -3 : -1;
+
+  const containerWidth = container.clientWidth || container.offsetWidth || 0;
+  const containerHeight =
+    container.clientHeight ||
+    parseInt(mapHeight.value, 10) ||
+    280;
+
+  const availableWidth = Math.max(1, containerWidth - (fitPadding * 2));
+  const availableHeight = Math.max(1, containerHeight - (fitPadding * 2));
+
+  // CRS.Simple: 1 unit = 1 pixel pada zoom 0, jadi gunakan log2 untuk hitung zoom fit.
+  const widthFitZoom = Math.log2(availableWidth / IMAGE_WIDTH.value);
+  const heightFitZoom = Math.log2(availableHeight / IMAGE_HEIGHT.value);
+  const fitZoom = Math.min(widthFitZoom, heightFitZoom);
+
+  // Round down ke 0.1 agar tidak ada crop karena pembulatan float.
+  return Math.floor((fitZoom - 0.01) * 10) / 10;
+}
+
 function getOptimalZoomSettings() {
-  const isMobile = window.innerWidth < 768;
+  const fitPadding = window.innerWidth < 768 ? 0 : 10;
+  const minZoom = getFitMinZoom(fitPadding);
   
-  // Untuk semua GH: padding minimal agar denah fit ke container
   return {
-    minZoom: isMobile ? -1 : -0.5,
+    minZoom,
     fitMaxZoom: 4,  // Biarkan fitBounds menentukan zoom terbaik
-    padding: [10, 10]
+    padding: [fitPadding, fitPadding]
   };
 }
 
@@ -714,6 +736,8 @@ function initMap() {
     crs: L.CRS.Simple,
     minZoom: zoomSettings.minZoom,
     maxZoom: 2,
+    zoomSnap: 0.1,
+    zoomDelta: 0.25,
     zoomControl: true,
     attributionControl: false,
   });
@@ -833,6 +857,7 @@ onMounted(() => {
             map.invalidateSize();
             const bounds = [[0, 0], [IMAGE_HEIGHT.value, IMAGE_WIDTH.value]];
             const zoomSettings = getOptimalZoomSettings();
+            map.setMinZoom(zoomSettings.minZoom);
             map.fitBounds(bounds, { padding: zoomSettings.padding, maxZoom: zoomSettings.fitMaxZoom });
           });
         }
@@ -1329,14 +1354,14 @@ watch(
 
 /* Popup untuk node atas - panah mengarah ke atas */
 .popup-bottom.leaflet-popup .leaflet-popup-tip-container {
-  top: -1px !important;
+  top: -19px !important;
   bottom: auto !important;
   margin-top: 0 !important;
   transform: rotate(180deg) !important;
 }
 
 .popup-bottom.leaflet-popup .leaflet-popup-content-wrapper {
-  margin-top: 13px;
+  margin-top: 0 !important;
 }
 
 /* Turunkan z-index Leaflet controls agar tidak muncul di atas sidebar mobile */

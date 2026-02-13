@@ -28,6 +28,11 @@ const perPage = ref(10);
 const totalRows = ref(0);
 const lastPage = ref(1);
 
+// Server-side sort & filter state
+let gridApi = null;
+const currentSort = ref({ sort_by: null, sort_dir: null });
+const currentColumnFilters = ref({});
+
 const columnDefs = ref([
     {
         headerName: "No",
@@ -40,56 +45,51 @@ const columnDefs = ref([
         sortable: false,
         resizable: false,
     },
-    { headerName: "Node", field: "node_id", filter: false, sortable: false, minWidth: 80, maxWidth: 90 },
+    { headerName: "Node", field: "node_id", filter: "agNumberColumnFilter", minWidth: 80, maxWidth: 90 },
     {
         headerName: "Date",
         field: "date",
-        filter: false,
-        sortable: false,
+        filter: "agTextColumnFilter",
         minWidth: 120,
     },
     {
         headerName: "Time",
         field: "time",
-        filter: false,
-        sortable: false,
+        filter: "agTextColumnFilter",
         minWidth: 100,
     },
     {
         headerName: "Temperature (°C)",
         field: "temperature",
-        filter: false,
-        sortable: false,
+        filter: "agNumberColumnFilter",
         minWidth: 150,
     },
     {
         headerName: "Humidity (%)",
         field: "humidity",
-        filter: false,
-        sortable: false,
+        filter: "agNumberColumnFilter",
         minWidth: 130,
     },
     {
         headerName: "Light Intensity (lx)",
         field: "light_intensity",
-        filter: false,
-        sortable: false,
+        filter: "agNumberColumnFilter",
         minWidth: 160,
     },
     {
         headerName: "RSSI (dBm)",
         field: "rssi",
-        filter: false,
-        sortable: false,
+        filter: "agNumberColumnFilter",
         minWidth: 120,
     },
 ]);
 const defaultColDef = ref({
     flex: 1,
     minWidth: 100,
+    filter: true,
+    sortable: true,
     resizable: false,
     suppressMovable: true,
-    suppressHeaderMenuButton: true,
 });
 
 // Computed display values
@@ -113,6 +113,17 @@ const fetchData = async () => {
 
         if (selectedNode.value) {
             queryData.node_id = selectedNode.value;
+        }
+
+        // Add sort params
+        if (currentSort.value.sort_by) {
+            queryData.sort_by = currentSort.value.sort_by;
+            queryData.sort_dir = currentSort.value.sort_dir;
+        }
+
+        // Add column filter params
+        if (Object.keys(currentColumnFilters.value).length > 0) {
+            queryData.column_filters = currentColumnFilters.value;
         }
 
         const url = `/api/table-per-gh?dict=` + JSON.stringify(queryData);
@@ -157,9 +168,47 @@ const onPerPageChange = () => {
     fetchData();
 };
 
+// AG Grid event: sort changed
+const onSortChanged = (event) => {
+    const sortModel = event.api.getColumnState()
+        .filter(col => col.sort)
+        .map(col => ({ colId: col.colId, sort: col.sort }));
+
+    if (sortModel.length > 0) {
+        currentSort.value = {
+            sort_by: sortModel[0].colId,
+            sort_dir: sortModel[0].sort,
+        };
+    } else {
+        currentSort.value = { sort_by: null, sort_dir: null };
+    }
+    currentPage.value = 1;
+    fetchData();
+};
+
+// AG Grid event: filter changed
+const onFilterChanged = (event) => {
+    const filterModel = event.api.getFilterModel();
+    currentColumnFilters.value = filterModel;
+    currentPage.value = 1;
+    fetchData();
+};
+
+// AG Grid ready
+const onGridReady = (params) => {
+    gridApi = params.api;
+};
+
 // On tab switch, reset everything and fetch
 watch(activeTab, () => {
     currentPage.value = 1;
+    currentSort.value = { sort_by: null, sort_dir: null };
+    currentColumnFilters.value = {};
+    // Reset AG Grid filter/sort state
+    if (gridApi) {
+        gridApi.setFilterModel(null);
+        gridApi.applyColumnState({ defaultState: { sort: null } });
+    }
     debouncedFetchData();
 });
 
@@ -308,6 +357,9 @@ const exportData = async () => {
                             :domLayout="'autoHeight'"
                             :theme="themeAlpine"
                             :suppressPaginationPanel="true"
+                            @grid-ready="onGridReady"
+                            @sort-changed="onSortChanged"
+                            @filter-changed="onFilterChanged"
                         >
                         </ag-grid-vue>
                     </div>

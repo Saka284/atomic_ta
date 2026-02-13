@@ -436,6 +436,16 @@ class ApiController extends Controller
         $perPage = min(100, max(1, (int) ($decodedData['per_page'] ?? 10)));
         $offset = ($page - 1) * $perPage;
 
+        // Sort parameters
+        $allowedSortColumns = ['node_id', 'date', 'time', 'temperature', 'humidity', 'light_intensity', 'rssi'];
+        $sortBy = $decodedData['sort_by'] ?? 'date';
+        $sortDir = strtoupper($decodedData['sort_dir'] ?? 'DESC');
+        if (!in_array($sortBy, $allowedSortColumns)) $sortBy = 'date';
+        if (!in_array($sortDir, ['ASC', 'DESC'])) $sortDir = 'DESC';
+
+        // Column filter parameters (from AG Grid)
+        $columnFilters = $decodedData['column_filters'] ?? [];
+
         // Optimization: Raw SQL for check
         $greenhouseExists = DB::selectOne("SELECT 1 FROM greenhouses WHERE id = ?", [$gh_id]);
         if (!$greenhouseExists) {
@@ -446,7 +456,7 @@ class ApiController extends Controller
         $cacheKey = 'table_' . md5($dict);
 
         // Optimization: Cache result for 60 seconds
-        return Cache::remember($cacheKey, 60, function () use ($gh_id, $decodedData, $page, $perPage, $offset) {
+        return Cache::remember($cacheKey, 60, function () use ($gh_id, $decodedData, $page, $perPage, $offset, $sortBy, $sortDir, $columnFilters) {
             $sensorIds = Cache::remember("sensor_ids_{$gh_id}", 3600, function () use ($gh_id) {
                 return Sensor::where('gh_id', $gh_id)->pluck('id', 'name')->toArray();
             });
@@ -501,11 +511,139 @@ class ApiController extends Controller
                 $filterParams[] = $nodeId;
             }
 
-            // 1. Count total rows (distinct groups)
+            // Build HAVING clause for column filters (aggregated columns)
+            $havingClause = '';
+            $havingParams = [];
+            $havingParts = [];
+
+            // Map column names to their HAVING expressions
+            $havingColumnMap = [
+                'node_id' => 'sd.node_id',
+                'date' => 'DATE(sd.recorded_at)',
+                'time' => 'TIME(sd.recorded_at)',
+                'temperature' => 'MAX(CASE WHEN sd.sensor_id = ' . ((int)($sensorIdMap['temperature'] ?? 0)) . ' THEN sd.value END)',
+                'humidity' => 'MAX(CASE WHEN sd.sensor_id = ' . ((int)($sensorIdMap['humidity'] ?? 0)) . ' THEN sd.value END)',
+                'light_intensity' => 'MAX(CASE WHEN sd.sensor_id = ' . ((int)($sensorIdMap['light_intensity'] ?? 0)) . ' THEN sd.value END)',
+                'rssi' => 'MAX(CASE WHEN sd.sensor_id = ' . ((int)($sensorIdMap['rssi'] ?? 0)) . ' THEN sd.value END)',
+            ];
+
+            foreach ($columnFilters as $colName => $filterDef) {
+                if (!isset($havingColumnMap[$colName])) continue;
+                $expr = $havingColumnMap[$colName];
+                $type = $filterDef['filterType'] ?? 'number';
+                $condType = $filterDef['type'] ?? 'equals';
+                $filterVal = $filterDef['filter'] ?? null;
+                $filterTo = $filterDef['filterTo'] ?? null;
+
+                if ($filterVal === null && $condType !== 'blank' && $condType !== 'notBlank') continue;
+
+                if ($type === 'text') {
+                    // Text filter handling (for date, time columns)
+                    switch ($condType) {
+                        case 'contains':
+                            $havingParts[] = "$expr LIKE ?";
+                            $havingParams[] = "%$filterVal%";
+                            break;
+                        case 'notContains':
+                            $havingParts[] = "$expr NOT LIKE ?";
+                            $havingParams[] = "%$filterVal%";
+                            break;
+                        case 'equals':
+                            $havingParts[] = "$expr = ?";
+                            $havingParams[] = $filterVal;
+                            break;
+                        case 'notEqual':
+                            $havingParts[] = "$expr != ?";
+                            $havingParams[] = $filterVal;
+                            break;
+                        case 'startsWith':
+                            $havingParts[] = "$expr LIKE ?";
+                            $havingParams[] = "$filterVal%";
+                            break;
+                        case 'endsWith':
+                            $havingParts[] = "$expr LIKE ?";
+                            $havingParams[] = "%$filterVal";
+                            break;
+                    }
+                } else {
+                    // Number filter handling
+                    switch ($condType) {
+                        case 'equals':
+                            $havingParts[] = "$expr = ?";
+                            $havingParams[] = $filterVal;
+                            break;
+                        case 'notEqual':
+                            $havingParts[] = "$expr != ?";
+                            $havingParams[] = $filterVal;
+                            break;
+                        case 'greaterThan':
+                            $havingParts[] = "$expr > ?";
+                            $havingParams[] = $filterVal;
+                            break;
+                        case 'greaterThanOrEqual':
+                            $havingParts[] = "$expr >= ?";
+                            $havingParams[] = $filterVal;
+                            break;
+                        case 'lessThan':
+                            $havingParts[] = "$expr < ?";
+                            $havingParams[] = $filterVal;
+                            break;
+                        case 'lessThanOrEqual':
+                            $havingParts[] = "$expr <= ?";
+                            $havingParams[] = $filterVal;
+                            break;
+                        case 'inRange':
+                            if ($filterTo !== null) {
+                                $havingParts[] = "$expr >= ? AND $expr <= ?";
+                                $havingParams[] = $filterVal;
+                                $havingParams[] = $filterTo;
+                            }
+                            break;
+                        case 'blank':
+                            $havingParts[] = "$expr IS NULL";
+                            break;
+                        case 'notBlank':
+                            $havingParts[] = "$expr IS NOT NULL";
+                            break;
+                    }
+                }
+            }
+
+            if (!empty($havingParts)) {
+                $havingClause = 'HAVING ' . implode(' AND ', $havingParts);
+            }
+
+            // Build ORDER BY clause
+            $sortColumn = match ($sortBy) {
+                'node_id' => 'sd.node_id',
+                'date' => 'sd.recorded_at',
+                'time' => 'sd.recorded_at',
+                'temperature' => 'temperature',
+                'humidity' => 'humidity',
+                'light_intensity' => 'light_intensity',
+                'rssi' => 'rssi',
+                default => 'sd.recorded_at',
+            };
+            $orderByClause = "ORDER BY $sortColumn $sortDir";
+            // Add secondary sort for stability
+            if ($sortBy !== 'date' && $sortBy !== 'time') {
+                $orderByClause .= ', sd.recorded_at DESC';
+            } else {
+                $orderByClause .= ', sd.node_id ASC';
+            }
+
+            // 1. Count total rows (distinct groups, with HAVING filters)
             $countSql = "SELECT COUNT(*) as total FROM (
-                SELECT 1 FROM sensor_data sd WHERE $whereClause GROUP BY sd.node_id, sd.recorded_at
+                SELECT sd.node_id,
+                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as temperature,
+                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as humidity,
+                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as light_intensity,
+                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as rssi
+                FROM sensor_data sd WHERE $whereClause GROUP BY sd.node_id, sd.recorded_at
+                $havingClause
             ) as cnt";
-            $totalResult = DB::selectOne($countSql, $filterParams);
+            $countParams = array_merge($caseParams, $filterParams, $havingParams);
+            $totalResult = DB::selectOne($countSql, $countParams);
             $total = $totalResult->total ?? 0;
 
             // 2. Fetch paginated data
@@ -521,11 +659,12 @@ class ApiController extends Controller
                 FROM sensor_data sd
                 WHERE $whereClause
                 GROUP BY sd.node_id, sd.recorded_at
-                ORDER BY sd.recorded_at DESC, sd.node_id ASC
+                $havingClause
+                $orderByClause
                 LIMIT ? OFFSET ?
             ";
 
-            $dataParams = array_merge($caseParams, $filterParams, [$perPage, $offset]);
+            $dataParams = array_merge($caseParams, $filterParams, $havingParams, [$perPage, $offset]);
             $sensorData = DB::select($dataSql, $dataParams);
 
             $lastPage = max(1, (int) ceil($total / $perPage));
