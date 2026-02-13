@@ -2955,7 +2955,7 @@ var HEATMAP_RADIUS = 300;
       var aspectRatio = imgHeight / imgWidth;
 
       // fitBounds padding (harus sama dengan getOptimalZoomSettings)
-      var fitPadding = 10;
+      var fitPadding = window.innerWidth < 768 ? 0 : 10;
 
       // Leaflet fitBounds mereserve padding di kiri-kanan,
       // jadi gambar sebenarnya di-render di area (containerWidth - 2*fitPadding)
@@ -2966,20 +2966,35 @@ var HEATMAP_RADIUS = 300;
       var calculatedHeight = Math.round(imageHeight + fitPadding * 2);
 
       // Minimum dan maximum height
-      var minHeight = 200;
+      var minHeight = window.innerWidth < 768 ? 120 : 200;
       var maxHeight = window.innerWidth >= 1024 ? 500 : 450;
       calculatedHeight = Math.max(minHeight, Math.min(maxHeight, calculatedHeight));
       mapHeight.value = calculatedHeight + 'px';
     }
-    function getOptimalZoomSettings() {
-      var isMobile = window.innerWidth < 768;
+    function getFitMinZoom(fitPadding) {
+      var container = mapContainer.value;
+      if (!container) return window.innerWidth < 768 ? -3 : -1;
+      var containerWidth = container.clientWidth || container.offsetWidth || 0;
+      var containerHeight = container.clientHeight || parseInt(mapHeight.value, 10) || 280;
+      var availableWidth = Math.max(1, containerWidth - fitPadding * 2);
+      var availableHeight = Math.max(1, containerHeight - fitPadding * 2);
 
-      // Untuk semua GH: padding minimal agar denah fit ke container
+      // CRS.Simple: 1 unit = 1 pixel pada zoom 0, jadi gunakan log2 untuk hitung zoom fit.
+      var widthFitZoom = Math.log2(availableWidth / IMAGE_WIDTH.value);
+      var heightFitZoom = Math.log2(availableHeight / IMAGE_HEIGHT.value);
+      var fitZoom = Math.min(widthFitZoom, heightFitZoom);
+
+      // Round down ke 0.1 agar tidak ada crop karena pembulatan float.
+      return Math.floor((fitZoom - 0.01) * 10) / 10;
+    }
+    function getOptimalZoomSettings() {
+      var fitPadding = window.innerWidth < 768 ? 0 : 10;
+      var minZoom = getFitMinZoom(fitPadding);
       return {
-        minZoom: isMobile ? -1 : -0.5,
+        minZoom: minZoom,
         fitMaxZoom: 4,
         // Biarkan fitBounds menentukan zoom terbaik
-        padding: [10, 10]
+        padding: [fitPadding, fitPadding]
       };
     }
     function initMap() {
@@ -2989,6 +3004,8 @@ var HEATMAP_RADIUS = 300;
         crs: (leaflet__WEBPACK_IMPORTED_MODULE_5___default().CRS).Simple,
         minZoom: zoomSettings.minZoom,
         maxZoom: 2,
+        zoomSnap: 0.1,
+        zoomDelta: 0.25,
         zoomControl: true,
         attributionControl: false
       });
@@ -3102,6 +3119,7 @@ var HEATMAP_RADIUS = 300;
                 map.invalidateSize();
                 var bounds = [[0, 0], [IMAGE_HEIGHT.value, IMAGE_WIDTH.value]];
                 var zoomSettings = getOptimalZoomSettings();
+                map.setMinZoom(zoomSettings.minZoom);
                 map.fitBounds(bounds, {
                   padding: zoomSettings.padding,
                   maxZoom: zoomSettings.fitMaxZoom
@@ -3261,6 +3279,7 @@ var HEATMAP_RADIUS = 300;
         imageOverlay = v;
       },
       updateMapHeight: updateMapHeight,
+      getFitMinZoom: getFitMinZoom,
       getOptimalZoomSettings: getOptimalZoomSettings,
       initMap: initMap,
       clipHeatmapToBounds: clipHeatmapToBounds,
@@ -3679,6 +3698,14 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     var perPage = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)(10);
     var totalRows = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)(0);
     var lastPage = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)(1);
+
+    // Server-side sort & filter state
+    var gridApi = null;
+    var currentSort = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({
+      sort_by: null,
+      sort_dir: null
+    });
+    var currentColumnFilters = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({});
     var columnDefs = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)([{
       headerName: "No",
       valueGetter: function valueGetter(params) {
@@ -3692,53 +3719,47 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     }, {
       headerName: "Node",
       field: "node_id",
-      filter: false,
-      sortable: false,
+      filter: "agNumberColumnFilter",
       minWidth: 80,
       maxWidth: 90
     }, {
       headerName: "Date",
       field: "date",
-      filter: false,
-      sortable: false,
+      filter: "agTextColumnFilter",
       minWidth: 120
     }, {
       headerName: "Time",
       field: "time",
-      filter: false,
-      sortable: false,
+      filter: "agTextColumnFilter",
       minWidth: 100
     }, {
       headerName: "Temperature (°C)",
       field: "temperature",
-      filter: false,
-      sortable: false,
+      filter: "agNumberColumnFilter",
       minWidth: 150
     }, {
       headerName: "Humidity (%)",
       field: "humidity",
-      filter: false,
-      sortable: false,
+      filter: "agNumberColumnFilter",
       minWidth: 130
     }, {
       headerName: "Light Intensity (lx)",
       field: "light_intensity",
-      filter: false,
-      sortable: false,
+      filter: "agNumberColumnFilter",
       minWidth: 160
     }, {
       headerName: "RSSI (dBm)",
       field: "rssi",
-      filter: false,
-      sortable: false,
+      filter: "agNumberColumnFilter",
       minWidth: 120
     }]);
     var defaultColDef = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({
       flex: 1,
       minWidth: 100,
+      filter: true,
+      sortable: true,
       resizable: false,
-      suppressMovable: true,
-      suppressHeaderMenuButton: true
+      suppressMovable: true
     });
 
     // Computed display values
@@ -3767,6 +3788,17 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               }
               if (selectedNode.value) {
                 queryData.node_id = selectedNode.value;
+              }
+
+              // Add sort params
+              if (currentSort.value.sort_by) {
+                queryData.sort_by = currentSort.value.sort_by;
+                queryData.sort_dir = currentSort.value.sort_dir;
+              }
+
+              // Add column filter params
+              if (Object.keys(currentColumnFilters.value).length > 0) {
+                queryData.column_filters = currentColumnFilters.value;
               }
               url = "/api/table-per-gh?dict=" + JSON.stringify(queryData);
               _context.n = 1;
@@ -3843,9 +3875,61 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       fetchData();
     };
 
+    // AG Grid event: sort changed
+    var onSortChanged = function onSortChanged(event) {
+      var sortModel = event.api.getColumnState().filter(function (col) {
+        return col.sort;
+      }).map(function (col) {
+        return {
+          colId: col.colId,
+          sort: col.sort
+        };
+      });
+      if (sortModel.length > 0) {
+        currentSort.value = {
+          sort_by: sortModel[0].colId,
+          sort_dir: sortModel[0].sort
+        };
+      } else {
+        currentSort.value = {
+          sort_by: null,
+          sort_dir: null
+        };
+      }
+      currentPage.value = 1;
+      fetchData();
+    };
+
+    // AG Grid event: filter changed
+    var onFilterChanged = function onFilterChanged(event) {
+      var filterModel = event.api.getFilterModel();
+      currentColumnFilters.value = filterModel;
+      currentPage.value = 1;
+      fetchData();
+    };
+
+    // AG Grid ready
+    var onGridReady = function onGridReady(params) {
+      gridApi = params.api;
+    };
+
     // On tab switch, reset everything and fetch
     (0,vue__WEBPACK_IMPORTED_MODULE_0__.watch)(activeTab, function () {
       currentPage.value = 1;
+      currentSort.value = {
+        sort_by: null,
+        sort_dir: null
+      };
+      currentColumnFilters.value = {};
+      // Reset AG Grid filter/sort state
+      if (gridApi) {
+        gridApi.setFilterModel(null);
+        gridApi.applyColumnState({
+          defaultState: {
+            sort: null
+          }
+        });
+      }
       debouncedFetchData();
     });
 
@@ -3933,6 +4017,14 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       perPage: perPage,
       totalRows: totalRows,
       lastPage: lastPage,
+      get gridApi() {
+        return gridApi;
+      },
+      set gridApi(v) {
+        gridApi = v;
+      },
+      currentSort: currentSort,
+      currentColumnFilters: currentColumnFilters,
       columnDefs: columnDefs,
       defaultColDef: defaultColDef,
       fromRow: fromRow,
@@ -3944,6 +4036,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       goToNext: goToNext,
       goToLast: goToLast,
       onPerPageChange: onPerPageChange,
+      onSortChanged: onSortChanged,
+      onFilterChanged: onFilterChanged,
+      onGridReady: onGridReady,
       formatDate: formatDate,
       exportData: exportData,
       ref: vue__WEBPACK_IMPORTED_MODULE_0__.ref,
@@ -6338,7 +6433,10 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
         defaultColDef: $setup.defaultColDef,
         domLayout: 'autoHeight',
         theme: $setup.themeAlpine,
-        suppressPaginationPanel: true
+        suppressPaginationPanel: true,
+        onGridReady: $setup.onGridReady,
+        onSortChanged: $setup.onSortChanged,
+        onFilterChanged: $setup.onFilterChanged
       }, null, 8 /* PROPS */, ["rowData", "columnDefs", "defaultColDef", "theme"])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" Custom Pagination "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_12, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" Page Size Selector "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_13, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.withDirectives)((0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("select", {
         "onUpdate:modelValue": _cache[3] || (_cache[3] = function ($event) {
           return $setup.perPage = $event;
@@ -6557,7 +6655,7 @@ __webpack_require__.r(__webpack_exports__);
 
 var ___CSS_LOADER_EXPORT___ = _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0___default()(function(i){return i[1]});
 // Module
-___CSS_LOADER_EXPORT___.push([module.id, "\r\n/* MARKER STYLES (global, tidak scoped) */\n.custom-marker {\r\n  background: transparent;\r\n  border: none;\n}\n.marker-pin {\r\n  width: 30px;\r\n  height: 30px;\r\n  border-radius: 50%;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  border: 3px solid white;\r\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);\r\n  cursor: pointer;\r\n  transition: transform 0.2s ease;\n}\n.marker-pin:hover {\r\n  transform: scale(1.2);\n}\n.marker-number {\r\n  color: white;\r\n  font-weight: bold;\r\n  font-size: 12px;\r\n  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);\n}\r\n\r\n/* POPUP STYLES */\n.node-popup .leaflet-popup-content-wrapper {\r\n  border-radius: 12px;\r\n  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);\n}\n.node-popup .leaflet-popup-content {\r\n  margin: 12px 16px;\n}\n.node-popup .leaflet-popup-tip {\r\n  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);\n}\r\n\r\n/* Popup untuk node atas - panah mengarah ke atas */\n.popup-bottom.leaflet-popup .leaflet-popup-tip-container {\r\n  top: -1px !important;\r\n  bottom: auto !important;\r\n  margin-top: 0 !important;\r\n  transform: rotate(180deg) !important;\n}\n.popup-bottom.leaflet-popup .leaflet-popup-content-wrapper {\r\n  margin-top: 13px;\n}\r\n\r\n/* Turunkan z-index Leaflet controls agar tidak muncul di atas sidebar mobile */\n.leaflet-control-container,\r\n.leaflet-control-container .leaflet-top,\r\n.leaflet-control-container .leaflet-left,\r\n.leaflet-control-container .leaflet-right,\r\n.leaflet-control-container .leaflet-bottom,\r\n.leaflet-top.leaflet-left,\r\n.leaflet-top.leaflet-right,\r\n.leaflet-control-zoom,\r\n.leaflet-control-zoom-in,\r\n.leaflet-control-zoom-out,\r\n.leaflet-control {\r\n  z-index: 500 !important;\n}\r\n", ""]);
+___CSS_LOADER_EXPORT___.push([module.id, "\r\n/* MARKER STYLES (global, tidak scoped) */\n.custom-marker {\r\n  background: transparent;\r\n  border: none;\n}\n.marker-pin {\r\n  width: 30px;\r\n  height: 30px;\r\n  border-radius: 50%;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  border: 3px solid white;\r\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);\r\n  cursor: pointer;\r\n  transition: transform 0.2s ease;\n}\n.marker-pin:hover {\r\n  transform: scale(1.2);\n}\n.marker-number {\r\n  color: white;\r\n  font-weight: bold;\r\n  font-size: 12px;\r\n  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);\n}\r\n\r\n/* POPUP STYLES */\n.node-popup .leaflet-popup-content-wrapper {\r\n  border-radius: 12px;\r\n  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);\n}\n.node-popup .leaflet-popup-content {\r\n  margin: 12px 16px;\n}\n.node-popup .leaflet-popup-tip {\r\n  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);\n}\r\n\r\n/* Popup untuk node atas - panah mengarah ke atas */\n.popup-bottom.leaflet-popup .leaflet-popup-tip-container {\r\n  top: -19px !important;\r\n  bottom: auto !important;\r\n  margin-top: 0 !important;\r\n  transform: rotate(180deg) !important;\n}\n.popup-bottom.leaflet-popup .leaflet-popup-content-wrapper {\r\n  margin-top: 0 !important;\n}\r\n\r\n/* Turunkan z-index Leaflet controls agar tidak muncul di atas sidebar mobile */\n.leaflet-control-container,\r\n.leaflet-control-container .leaflet-top,\r\n.leaflet-control-container .leaflet-left,\r\n.leaflet-control-container .leaflet-right,\r\n.leaflet-control-container .leaflet-bottom,\r\n.leaflet-top.leaflet-left,\r\n.leaflet-top.leaflet-right,\r\n.leaflet-control-zoom,\r\n.leaflet-control-zoom-in,\r\n.leaflet-control-zoom-out,\r\n.leaflet-control {\r\n  z-index: 500 !important;\n}\r\n", ""]);
 // Exports
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
 
