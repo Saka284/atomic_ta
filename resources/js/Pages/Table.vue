@@ -5,9 +5,7 @@ import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import { Head, usePage } from "@inertiajs/vue3";
 import Tabs from "@/Components/Tabs.vue";
 import { AgGridVue } from "ag-grid-vue3";
-import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
+import { AllCommunityModule, ModuleRegistry, themeAlpine } from "ag-grid-community";
 import VueDatePicker from "@vuepic/vue-datepicker";
 import "@vuepic/vue-datepicker/dist/main.css";
 import { useToast } from "vue-toastification";
@@ -16,81 +14,98 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 const toast = useToast();
 
-const { greenhouses, allTableData } = usePage().props;
+const { greenhouses } = usePage().props;
 const activeTab = ref(greenhouses[0].id);
 const daterange = ref();
 const selectedNode = ref("");
 const isExporting = ref(false);
 const isLoading = ref(false);
 
-const rowData = ref(allTableData?.[greenhouses[0].id] || []);
+// Server-side pagination state
+const rowData = ref([]);
+const currentPage = ref(1);
+const perPage = ref(10);
+const totalRows = ref(0);
+const lastPage = ref(1);
 
 const columnDefs = ref([
     {
         headerName: "No",
-        valueGetter: "node.rowIndex + 1",
-        minWidth: 50,
+        valueGetter: (params) => {
+            return (currentPage.value - 1) * perPage.value + params.node.rowIndex + 1;
+        },
+        minWidth: 60,
+        maxWidth: 70,
         filter: false,
         sortable: false,
-        resizable: true,
+        resizable: false,
     },
-    { headerName: "Node", field: "node_id", filter: "agNumberColumnFilter" },
+    { headerName: "Node", field: "node_id", filter: false, sortable: false, minWidth: 80, maxWidth: 90 },
     {
         headerName: "Date",
         field: "date",
-        filter: "agDateColumnFilter",
+        filter: false,
+        sortable: false,
+        minWidth: 120,
     },
     {
         headerName: "Time",
         field: "time",
         filter: false,
+        sortable: false,
+        minWidth: 100,
     },
     {
         headerName: "Temperature (°C)",
         field: "temperature",
-        filter: "agNumberColumnFilter",
+        filter: false,
+        sortable: false,
+        minWidth: 150,
     },
     {
         headerName: "Humidity (%)",
         field: "humidity",
-        filter: "agNumberColumnFilter",
+        filter: false,
+        sortable: false,
+        minWidth: 130,
     },
     {
         headerName: "Light Intensity (lx)",
         field: "light_intensity",
-        filter: "agNumberColumnFilter",
+        filter: false,
+        sortable: false,
+        minWidth: 160,
     },
     {
         headerName: "RSSI (dBm)",
         field: "rssi",
-        filter: "agNumberColumnFilter",
+        filter: false,
+        sortable: false,
+        minWidth: 120,
     },
 ]);
 const defaultColDef = ref({
     flex: 1,
     minWidth: 100,
-    filter: true,
-    sortable: true,
-    resizable: true,
+    resizable: false,
+    suppressMovable: true,
     suppressHeaderMenuButton: true,
 });
 
-const paginationPageSize = ref(10);
-const paginationPageSizeSelector = ref([10, 20, 50, 100]);
-
-let gridApi;
+// Computed display values
+const fromRow = () => totalRows.value === 0 ? 0 : (currentPage.value - 1) * perPage.value + 1;
+const toRow = () => Math.min(currentPage.value * perPage.value, totalRows.value);
 
 const fetchData = async () => {
-    if (!daterange.value && !selectedNode.value) {
-        rowData.value = allTableData?.[activeTab.value] || [];
-        return;
-    }
-    
     try {
         isLoading.value = true;
-        
-        const queryData = { gh_id: activeTab.value };
-        
+
+        const queryData = {
+            gh_id: activeTab.value,
+            page: currentPage.value,
+            per_page: perPage.value,
+        };
+
         if (daterange.value) {
             queryData.start_date = formatDate(daterange.value[0]);
             queryData.end_date = formatDate(daterange.value[1]);
@@ -109,11 +124,13 @@ const fetchData = async () => {
 
         const jsonData = await response.json();
 
-        if (Array.isArray(jsonData.data)) {
+        if (jsonData.success && Array.isArray(jsonData.data)) {
             rowData.value = jsonData.data;
+            totalRows.value = jsonData.total;
+            lastPage.value = jsonData.last_page;
         } else {
             toast.error("Gagal memuat data!");
-            console.error("Data format error: Expected array", jsonData);
+            console.error("Data format error:", jsonData);
         }
     } catch (error) {
         toast.error("Gagal memuat data!");
@@ -123,25 +140,38 @@ const fetchData = async () => {
     }
 };
 
+// Debounced fetch for filter changes
 const debouncedFetchData = debounce(() => {
+    currentPage.value = 1; // Reset to page 1 on filter change
     fetchData();
 }, 300);
 
+// Pagination controls
+const goToFirst = () => { currentPage.value = 1; fetchData(); };
+const goToPrev = () => { if (currentPage.value > 1) { currentPage.value--; fetchData(); } };
+const goToNext = () => { if (currentPage.value < lastPage.value) { currentPage.value++; fetchData(); } };
+const goToLast = () => { currentPage.value = lastPage.value; fetchData(); };
+
+const onPerPageChange = () => {
+    currentPage.value = 1;
+    fetchData();
+};
+
+// On tab switch, reset everything and fetch
 watch(activeTab, () => {
-    if (!daterange.value && !selectedNode.value) {
-        rowData.value = allTableData?.[activeTab.value] || [];
-    } else {
-        debouncedFetchData();
-    }
+    currentPage.value = 1;
+    debouncedFetchData();
 });
 
+// On filter change, reset page and fetch
 watch([daterange, selectedNode], () => {
     debouncedFetchData();
 });
 
-const onGridReady = (params) => {
-    gridApi = params.api;
-};
+// Initial fetch
+onMounted(() => {
+    fetchData();
+});
 
 const formatDate = (date) => {
     return new Date(date).toISOString().split("T")[0];
@@ -222,7 +252,7 @@ const exportData = async () => {
                         <!-- Filter Controls -->
                         <div class="flex flex-col gap-3 items-end justify-center bg-gray-50 p-2 rounded-lg border border-gray-100">
                             
-                            <!-- Date Filter (Global View) -->
+                            <!-- Date Filter -->
                             <div class="flex items-center gap-2 w-full justify-end">
                                 <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Date</span>
                                 <VueDatePicker
@@ -263,8 +293,8 @@ const exportData = async () => {
                     </div>
                     
                     <!-- AG Grid -->
-                    <div class="ag-theme-alpine relative">
-                        <!-- Loading Skeleton -->
+                    <div class="relative">
+                        <!-- Loading Overlay -->
                         <div v-if="isLoading" class="absolute inset-0 bg-white/80 z-10 flex items-center justify-center">
                             <div class="flex flex-col items-center gap-3">
                                 <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
@@ -275,16 +305,49 @@ const exportData = async () => {
                             :rowData="rowData"
                             :columnDefs="columnDefs"
                             :defaultColDef="defaultColDef"
-                            :pagination="true"
                             :domLayout="'autoHeight'"
-                            :paginationPageSize="paginationPageSize"
-                            :paginationPageSizeSelector="paginationPageSizeSelector"
-                            :animateRows="true"
-                            :loading="isLoading"
-                            @grid-ready="onGridReady"
-                            class="ag-theme-alpine"
+                            :theme="themeAlpine"
+                            :suppressPaginationPanel="true"
                         >
                         </ag-grid-vue>
+                    </div>
+
+                    <!-- Custom Pagination -->
+                    <div class="flex flex-col sm:flex-row items-center justify-between mt-4 gap-3 text-sm">
+                        <!-- Page Size Selector -->
+                        <div class="flex items-center gap-2">
+                            <select
+                                v-model="perPage"
+                                @change="onPerPageChange"
+                                class="border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 rounded-md shadow-sm h-[34px] text-sm"
+                            >
+                                <option :value="10">10</option>
+                                <option :value="20">20</option>
+                                <option :value="50">50</option>
+                                <option :value="100">100</option>
+                            </select>
+                        </div>
+
+                        <!-- Page Info & Navigation -->
+                        <div class="flex items-center gap-2">
+                            <button @click="goToFirst" :disabled="currentPage <= 1" class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
+                                <i class="fas fa-angle-double-left"></i>
+                            </button>
+                            <button @click="goToPrev" :disabled="currentPage <= 1" class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
+                                <i class="fas fa-angle-left"></i>
+                            </button>
+                            
+                            <span class="text-gray-600 mx-2">
+                                {{ fromRow() }} to {{ toRow() }} of {{ totalRows.toLocaleString() }}
+                            </span>
+
+                            <button @click="goToNext" :disabled="currentPage >= lastPage" class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
+                                <i class="fas fa-angle-right"></i>
+                            </button>
+                            <button @click="goToLast" :disabled="currentPage >= lastPage" class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
+                                <i class="fas fa-angle-double-right"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

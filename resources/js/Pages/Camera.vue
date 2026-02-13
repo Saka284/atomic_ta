@@ -7,9 +7,7 @@ import "@vuepic/vue-datepicker/dist/main.css";
 import DigitalClock from "@/Components/DigitalClock.vue";
 import Button from "@/Components/Button.vue";
 import { AgGridVue } from "ag-grid-vue3";
-import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
+import { AllCommunityModule, ModuleRegistry, themeAlpine } from "ag-grid-community";
 import { useToast } from "vue-toastification";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -46,8 +44,8 @@ const actuators = ref([
 // grid
 const gridOptions = ref({
     columnDefs: [
-        { field: "recorded_at", sortable: true, resizable: true, flex: 1 },
-        { field: "status", sortable: true, resizable: true, flex: 1 },
+        { field: "recorded_at", sortable: true, resizable: false, suppressMovable: true, flex: 1 },
+        { field: "status", sortable: true, resizable: false, suppressMovable: true, flex: 1 },
     ],
     rowSelection: {
         mode: "singleRow",
@@ -65,14 +63,16 @@ const columnDefs = ref([
         headerName: "Datetime",
         field: "recorded_at",
         sortable: true,
-        resizable: true,
+        resizable: false,
+        suppressMovable: true,
         flex: 1,
     },
     {
         headerName: "Akurasi Kabut",
         field: "fog_percentage",
         sortable: true,
-        resizable: true,
+        resizable: false,
+        suppressMovable: true,
         flex: 1,
         cellClass: "text-center",
         cellRenderer: (params) => {
@@ -83,7 +83,8 @@ const columnDefs = ref([
         headerName: "Status",
         field: "status",
         sortable: true,
-        resizable: true,
+        resizable: false,
+        suppressMovable: true,
         flex: 1,
         cellClass: "text-center",
         cellRenderer: (params) => {
@@ -462,7 +463,7 @@ const onRowSelected = (event, gh_id) => {
                                 />
                             </div>
                             <div class="flex flex-col gap-2">
-                                <div class="ag-theme-alpine">
+                                <div>
                                     <ag-grid-vue
                                         :rowData="
                                             rowDataMap[greenhouse.id] || []
@@ -498,7 +499,7 @@ const onRowSelected = (event, gh_id) => {
                                                     greenhouse.id
                                                 )
                                         "
-                                        class="ag-theme-alpine"
+                                        :theme="themeAlpine"
                                     >
                                     </ag-grid-vue>
                                 </div>
