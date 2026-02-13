@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from "vue";
+import { computed, ref, onMounted, watch } from "vue";
 import { Head, usePage } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import VueDatePicker from "@vuepic/vue-datepicker";
@@ -9,10 +9,12 @@ import Button from "@/Components/Button.vue";
 import { AgGridVue } from "ag-grid-vue3";
 import { AllCommunityModule, ModuleRegistry, themeAlpine } from "ag-grid-community";
 import { useToast } from "vue-toastification";
+import { useLocale } from "@/composables/useLocale";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 const toast = useToast();
+const { t } = useLocale();
 
 const { greenhouses, auth, latestData } = usePage().props;
 const daterange = ref();
@@ -58,9 +60,9 @@ const gridOptions = ref({
 });
 
 // column
-const columnDefs = ref([
+const columnDefs = computed(() => [
     {
-        headerName: "Date Time",
+        headerName: t("camera.date_time"),
         field: "recorded_at",
         sortable: true,
         resizable: false,
@@ -68,7 +70,7 @@ const columnDefs = ref([
         flex: 1,
     },
     {
-        headerName: "Fog Accuracy",
+        headerName: t("camera.fog_accuracy"),
         field: "fog_percentage",
         sortable: true,
         resizable: false,
@@ -76,11 +78,11 @@ const columnDefs = ref([
         flex: 1,
         cellClass: "text-center",
         cellRenderer: (params) => {
-            return params.value ? `${params.value}%` : '-';
-        }
+            return params.value ? `${params.value}%` : "-";
+        },
     },
     {
-        headerName: "Status",
+        headerName: t("camera.status"),
         field: "status",
         sortable: true,
         resizable: false,
@@ -90,9 +92,9 @@ const columnDefs = ref([
         cellRenderer: (params) => {
             const status = params.value || "Unknown";
             const statusLabelMap = {
-                Berkabut: "Foggy",
-                "Tidak Berkabut": "Clear",
-                Unknown: "Unknown",
+                Berkabut: t("camera.status_foggy"),
+                "Tidak Berkabut": t("camera.status_clear"),
+                Unknown: t("camera.status_unknown"),
             };
 
             const statusClasses = {
@@ -188,14 +190,14 @@ const fetchData = async (gh_id) => {
             rowDataMap.value[gh_id] = jsonData.data;
             rowImageMap.value[gh_id] = jsonData.data[0] || [];
         } else {
-            toast.error("Failed to load data.");
+            toast.error(t("camera.failed_load_data"));
             console.error("Data format error: Expected array", jsonData);
         }
 
         hideLoading(gh_id);
         rowImageLoading.value[gh_id] = false;
     } catch (error) {
-        toast.error("Failed to load data.");
+        toast.error(t("camera.failed_load_data"));
         console.error("Fetch error:", error);
         hideLoading(gh_id);
         rowImageLoading.value[gh_id] = false;
@@ -235,7 +237,7 @@ const exportData = async () => {
 
     // 1. Cek tanggal
     if (!daterange.value) {
-        toast.warning("Date range is required.");
+        toast.warning(t("camera.date_range_required"));
         isExporting.value = false;
         return;
     }
@@ -265,15 +267,15 @@ const exportData = async () => {
         a.click();
         document.body.removeChild(a);
 
-        toast.success("ZIP file downloaded successfully.");
+        toast.success(t("camera.zip_downloaded"));
 
         isExporting.value = false;
     } catch (error) {
         console.error(error);
         if (error.response && error.response.status === 404) {
-            toast.error("No data found for selected date range.");
+            toast.error(t("camera.no_data_selected_range"));
         } else {
-            toast.error("Failed to download file.");
+            toast.error(t("camera.failed_download"));
         }
         isExporting.value = false;
     }
@@ -295,12 +297,12 @@ const onRowSelected = (event, gh_id) => {
 </script>
 
 <template>
-    <Head title="Camera" />
+    <Head :title="t('title.camera')" />
 
     <BreezeAuthenticatedLayout :titlePage="'Camera'">
         <template #header>
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                Camera
+                {{ t("title.camera") }}
             </h2>
         </template>
 
@@ -312,11 +314,11 @@ const onRowSelected = (event, gh_id) => {
                     >
                         <div class="flex flex-col w-full gap-2">
                             <div class="flex justify-between">
-                                <p>Time</p>
+                                <p>{{ t("camera.time") }}</p>
                                 <DigitalClock />
                             </div>
                             <div class="flex justify-between">
-                                <p>Latest Data</p>
+                                <p>{{ t("camera.latest_data") }}</p>
                                 <p>
                                     {{ latestData || "-" }}
                                 </p>
@@ -328,7 +330,7 @@ const onRowSelected = (event, gh_id) => {
                     >
                         <div class="flex flex-col w-full">
                             <div class="flex justify-between">
-                                <p class="text-lg">Export</p>
+                                <p class="text-lg">{{ t("camera.export") }}</p>
                             </div>
                             <div class="flex justify-between gap-2">
                                 <select
@@ -349,7 +351,7 @@ const onRowSelected = (event, gh_id) => {
                                     range
                                     :teleport="true"
                                     position="left"
-                                    placeholder="Pick a Date Range"
+                                    :placeholder="t('camera.pick_date_range')"
                                 />
                                 <button
                                     :disabled="isExporting"
@@ -396,7 +398,7 @@ const onRowSelected = (event, gh_id) => {
                                         {{ actuator.name }}
                                     </p>
                                     <p class="text-sm text-gray-500">
-                                        Status
+                                        {{ t("camera.status") }}
                                     </p>
                                 </div>
                             </div>
@@ -427,7 +429,7 @@ const onRowSelected = (event, gh_id) => {
                                 <div v-if="rowImageMap[greenhouse.id]?.fog_percentage" 
                                     class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm">
                                     <span class="text-xs font-bold">
-                                        Accuracy: {{ rowImageMap[greenhouse.id]?.fog_percentage }}%
+                                        {{ t("camera.accuracy") }}: {{ rowImageMap[greenhouse.id]?.fog_percentage }}%
                                     </span>
                                 </div>
                             </div>

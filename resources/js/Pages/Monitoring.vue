@@ -10,8 +10,10 @@ import Button from "@/Components/Button.vue";
 import VueDatePicker from "@vuepic/vue-datepicker";
 import "@vuepic/vue-datepicker/dist/main.css";
 import { useToast } from "vue-toastification";
+import { useLocale } from "@/composables/useLocale";
 
 const toast = useToast();
+const { t } = useLocale();
 
 const page = usePage();
 const greenhouses = computed(() => page.props.greenhouses || []);
@@ -37,26 +39,26 @@ const chartRangeOptions = [
     { value: "last_1m", label: "1M" },
 ];
 
-const actuatorCards = [
+const actuatorCards = computed(() => [
     {
         key: "exhaust",
-        name: "Exhaust Fan",
+        name: t("monitoring.exhaust_fan"),
         icon: "fas fa-fan",
         color: "text-yellow-500",
     },
     {
         key: "dehumidifier",
-        name: "Dehumidifier",
+        name: t("monitoring.dehumidifier"),
         icon: "fas fa-tint",
         color: "text-cyan-500",
     },
     {
         key: "blower",
-        name: "Blower",
+        name: t("monitoring.blower"),
         icon: "fas fa-fan",
         color: "text-red-500",
     },
-];
+]);
 
 const nodeColorMap = {
     1: "#3B82F6",
@@ -164,7 +166,7 @@ const activeActuators = computed(() => {
         actuatorStatus.value?.[String(currentGhId)] ||
         {};
 
-    return actuatorCards.map((actuator) => {
+    return actuatorCards.value.map((actuator) => {
         const actuatorData = currentStatus[actuator.key] || {};
         return {
             ...actuator,
@@ -402,14 +404,14 @@ const fetchData = async (sensor_id) => {
 
         const jsonData = await response.json();
         if (jsonData?.success === false) {
-            throw new Error(jsonData?.message || "Failed to load chart.");
+            throw new Error(jsonData?.message || t("monitoring.failed_load_chart"));
         }
 
         const normalizedPayload = normalizeChartPayload(jsonData);
         setChartCachedPayload(cacheKey, normalizedPayload);
         applyChartPayload(sensor_id, normalizedPayload);
     } catch (error) {
-        toast.error(error?.message || "Failed to load data.");
+        toast.error(error?.message || t("monitoring.failed_load_data"));
         console.error("Fetch error:", error);
     } finally {
         isFetching.value[sensor_id] = false;
@@ -469,12 +471,12 @@ watch(activeTab, async (newTab) => {
 </script>
 
 <template>
-    <Head title="Monitoring" />
+    <Head :title="t('title.monitoring')" />
 
     <BreezeAuthenticatedLayout :titlePage="'Monitoring'">
         <template #header>
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                Monitoring
+                {{ t("title.monitoring") }}
             </h2>
         </template>
 
@@ -494,11 +496,11 @@ watch(activeTab, async (newTab) => {
                     >
                         <div class="flex flex-col w-full">
                             <div class="flex justify-between">
-                                <p>Time</p>
+                                <p>{{ t("monitoring.time") }}</p>
                                 <DigitalClock />
                             </div>
                             <div class="flex justify-between">
-                                <p>Latest Data</p>
+                                <p>{{ t("monitoring.latest_data") }}</p>
                                 <p>
                                     {{
                                         latestData.find(
@@ -532,7 +534,7 @@ watch(activeTab, async (newTab) => {
                                             {{ actuator.name }}
                                         </p>
                                         <p class="text-sm text-gray-500">
-                                            Status
+                                            {{ t("monitoring.status") }}
                                         </p>
                                     </div>
                                 </div>
@@ -545,7 +547,11 @@ watch(activeTab, async (newTab) => {
                                     "
                                     class="px-3 py-1 text-xs font-bold rounded-full"
                                 >
-                                    {{ actuator.status ? "ON" : "OFF" }}
+                                    {{
+                                        actuator.status
+                                            ? t("monitoring.on")
+                                            : t("monitoring.off")
+                                    }}
                                 </div>
                             </div>
                         </div>
@@ -609,8 +615,12 @@ watch(activeTab, async (newTab) => {
                                                 )
                                             "
                                         >
-                                            <option value="avg">Average</option>
-                                            <option value="per_node">Per Node</option>
+                                            <option value="avg">
+                                                {{ t("monitoring.average") }}
+                                            </option>
+                                            <option value="per_node">
+                                                {{ t("monitoring.per_node") }}
+                                            </option>
                                         </select>
 
                                         <VueDatePicker
@@ -622,7 +632,7 @@ watch(activeTab, async (newTab) => {
                                             "
                                             range
                                             position="right"
-                                            placeholder="Date"
+                                            :placeholder="t('monitoring.date')"
                                             :format="formatDateRangeDisplay"
                                             :enable-time-picker="false"
                                             :teleport="true"
@@ -656,7 +666,7 @@ watch(activeTab, async (newTab) => {
                                                 }"
                                             >
                                                 <option value="">
-                                                    Hour
+                                                    {{ t("monitoring.hour") }}
                                                 </option>
                                                 <option
                                                     v-for="hour in 24"
@@ -746,10 +756,10 @@ watch(activeTab, async (newTab) => {
                                 v-else-if="isFetching[sensor.sensor_id]"
                                 class="text-center text-gray-500"
                             >
-                                Loading chart...
+                                {{ t("monitoring.loading_chart") }}
                             </p>
                             <p v-else class="text-center text-gray-500">
-                                No data available.
+                                {{ t("monitoring.no_data") }}
                             </p>
                         </div>
 
@@ -776,7 +786,7 @@ watch(activeTab, async (newTab) => {
                                 :id="sensor.sensor_id"
                             />
                             <p v-else class="text-center text-gray-500">
-                                Loading gauge...
+                                {{ t("monitoring.loading_gauge") }}
                             </p>
                         </div>
                     </div>
