@@ -16,33 +16,67 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 const toast = useToast();
 const { t, locale } = useLocale();
 
-const { greenhouses, latestData } = usePage().props;
+const page = usePage();
+const { greenhouses, latestData } = page.props;
+const actuatorStatus = computed(() => page.props.actuatorStatus || {});
 const daterange = ref();
 const isExporting = ref(false);
 const selectedGreenhouse = ref("");
 const rowImageLoading = ref({});
 const rowTableLoading = ref({});
 
-const actuators = computed(() => [
-    {
-        name: t("monitoring.exhaust_fan"),
-        icon: "fas fa-fan", // Font Awesome icon class
-        color: "text-yellow-500",
-        status: false, // false = off, true = on
-    },
-    {
-        name: t("monitoring.dehumidifier"),
-        icon: "fas fa-tint",
-        color: "text-cyan-500",
-        status: false,
-    },
-    {
-        name: t("monitoring.blower"),
-        icon: "fas fa-fan",
-        color: "text-red-500",
-        status: false,
-    },
-]);
+const activeActuatorGhId = computed(() => {
+    const parsedSelected = Number(selectedGreenhouse.value);
+    if (Number.isFinite(parsedSelected) && parsedSelected > 0) {
+        return parsedSelected;
+    }
+
+    const fallback = Number(greenhouses?.[0]?.id);
+    return Number.isFinite(fallback) && fallback > 0 ? fallback : 1;
+});
+
+const actuators = computed(() => {
+    const currentStatus =
+        actuatorStatus.value?.[activeActuatorGhId.value] ||
+        actuatorStatus.value?.[String(activeActuatorGhId.value)] ||
+        {};
+
+    return [
+        {
+            key: "exhaust",
+            name: t("monitoring.exhaust_fan"),
+            icon: "fas fa-fan",
+            color: "text-yellow-500",
+            status: Boolean(currentStatus.exhaust?.status),
+        },
+        {
+            key: "dehumidifier",
+            name: t("monitoring.dehumidifier"),
+            icon: "fas fa-tint",
+            color: "text-cyan-500",
+            status: Boolean(currentStatus.dehumidifier?.status),
+        },
+        {
+            key: "blower",
+            name: t("monitoring.blower"),
+            icon: "fas fa-fan",
+            color: "text-red-500",
+            status: Boolean(currentStatus.blower?.status),
+        },
+    ];
+});
+
+const getActuatorIconAnimationClass = (actuator) => {
+    if (!actuator?.status) {
+        return "";
+    }
+
+    if (actuator.key === "dehumidifier") {
+        return "actuator-dehumidifier-active";
+    }
+
+    return "actuator-fan-active";
+};
 
 const rowSelectionConfig = {
     mode: "singleRow",
@@ -180,6 +214,7 @@ const rowImageLoadingTimers = ref({});
 const isComponentAlive = ref(true);
 
 const DEFAULT_CAMERA_PER_PAGE = 20;
+const CAMERA_PER_PAGE_OPTIONS = [5, 10, 20, 50, 100];
 
 const ensurePaginationState = (gh_id) => {
     if (!paginationStateMap.value[gh_id]) {
@@ -201,6 +236,20 @@ const getPaginationText = (gh_id) => {
     }
 
     return `${state.page} ${t("common.of")} ${state.lastPage}`;
+};
+
+const getShowingText = (gh_id) => {
+    const state = ensurePaginationState(gh_id);
+    if (state.total <= 0) {
+        return t("camera.page_no_data");
+    }
+
+    const from = (state.page - 1) * state.perPage + 1;
+    const to = Math.min(state.page * state.perPage, state.total);
+
+    return `${t("camera.showing")} ${from} ${t("common.to")} ${to} ${t(
+        "common.of"
+    )} ${state.total}`;
 };
 
 const canPrevPage = (gh_id) => {
@@ -241,6 +290,17 @@ const onBtNext = (gh_id) => {
 const onBtPrevious = (gh_id) => {
     const state = ensurePaginationState(gh_id);
     goToPage(gh_id, state.page - 1);
+};
+
+const onPerPageChange = (gh_id, value) => {
+    const state = ensurePaginationState(gh_id);
+    const parsedPerPage = Number(value);
+    state.perPage =
+        Number.isFinite(parsedPerPage) && parsedPerPage > 0
+            ? parsedPerPage
+            : DEFAULT_CAMERA_PER_PAGE;
+    state.page = 1;
+    fetchData(gh_id);
 };
 
 // fetch data table
@@ -488,6 +548,9 @@ onUnmounted(() => {
                                     :class="[
                                         actuator.icon,
                                         actuator.color,
+                                        getActuatorIconAnimationClass(
+                                            actuator
+                                        ),
                                         'text-3xl w-10',
                                     ]"
                                 ></i>
@@ -608,7 +671,40 @@ onUnmounted(() => {
                                     >
                                     </ag-grid-vue>
                                 </div>
-                                <div class="flex justify-between">
+                                <div
+                                    class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-medium text-gray-500">{{
+                                            t("camera.show")
+                                        }}</span>
+                                        <select
+                                            :value="
+                                                paginationStateMap[greenhouse.id]
+                                                    ?.perPage ||
+                                                DEFAULT_CAMERA_PER_PAGE
+                                            "
+                                            class="h-8 rounded border border-gray-300 px-2 text-sm"
+                                            @change="
+                                                onPerPageChange(
+                                                    greenhouse.id,
+                                                    $event.target.value
+                                                )
+                                            "
+                                        >
+                                            <option
+                                                v-for="option in CAMERA_PER_PAGE_OPTIONS"
+                                                :key="`${greenhouse.id}-per-page-${option}`"
+                                                :value="option"
+                                            >
+                                                {{ option }}
+                                            </option>
+                                        </select>
+                                        <span class="text-xs font-medium text-gray-500">{{
+                                            t("camera.per_page")
+                                        }}</span>
+                                    </div>
+
                                     <div class="flex gap-2">
                                         <Button
                                             @click="onBtFirst(greenhouse.id)"
@@ -625,8 +721,13 @@ onUnmounted(() => {
                                             <i class="fas fa-angle-left"></i>
                                         </Button>
                                     </div>
-                                    <div>
-                                        <span>{{ getPaginationText(greenhouse.id) }}</span>
+                                    <div class="text-center">
+                                        <span class="block text-sm font-medium text-gray-700">{{
+                                            getShowingText(greenhouse.id)
+                                        }}</span>
+                                        <span class="block text-xs text-gray-500">{{
+                                            getPaginationText(greenhouse.id)
+                                        }}</span>
                                     </div>
                                     <div class="flex gap-2">
                                         <Button
@@ -665,5 +766,36 @@ onUnmounted(() => {
     align-items: center;
     justify-content: center;
     text-align: center;
+}
+
+.actuator-fan-active {
+    animation: actuator-fan-spin 1.5s linear infinite;
+    transform-origin: 50% 50%;
+}
+
+.actuator-dehumidifier-active {
+    animation: actuator-dehumidifier-pulse 1.7s ease-in-out infinite;
+    transform-origin: 50% 50%;
+}
+
+@keyframes actuator-fan-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes actuator-dehumidifier-pulse {
+    0%,
+    100% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(-2px) scale(1.08);
+        opacity: 0.82;
+    }
 }
 </style>

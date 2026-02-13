@@ -14,17 +14,16 @@
                         : 'text-gray-700 hover:text-green-600',
                 ]"
             >
-                {{ greenhouse.name }}
+                {{ getGreenhouseLabel(greenhouse) }}
             </div>
 
             <!-- Animated Background (Fixed Translate) -->
             <div
+                v-if="greenhouseCount > 0"
                 class="absolute top-0 left-0 h-full bg-green-500 rounded-full transition-all duration-300 shadow-md"
                 :style="{
-                    width: `${100 / greenhouses.length}%`,
-                    transform: `translateX(${
-                        activeIndex * (100 / greenhouses.length) * 2
-                    }%)`,
+                    width: `${100 / greenhouseCount}%`,
+                    transform: `translateX(${safeActiveIndex * 100}%)`,
                 }"
             ></div>
         </div>
@@ -43,6 +42,39 @@ defineEmits(["update:modelValue"]);
 
 // Mencari index dari greenhouse yang aktif
 const activeIndex = computed(() =>
-    props.greenhouses.findIndex((g) => g.id == props.modelValue)
+    (props.greenhouses || []).findIndex((g) => g.id == props.modelValue)
 );
+
+const greenhouseCount = computed(() => props.greenhouses?.length || 0);
+
+const safeActiveIndex = computed(() => {
+    if (greenhouseCount.value <= 0) {
+        return 0;
+    }
+
+    if (activeIndex.value < 0) {
+        return 0;
+    }
+
+    return Math.min(activeIndex.value, greenhouseCount.value - 1);
+});
+
+const getGreenhouseLabel = (greenhouse) => {
+    const label = String(greenhouse?.name || "").trim();
+    const ghId = Number(greenhouse?.id);
+    const defaultLabel = Number.isFinite(ghId) && ghId > 0
+        ? `GH Von Florist ${ghId}`
+        : "GH Von Florist";
+
+    if (label) {
+        const normalized = label.toLowerCase().replace(/\s+/g, " ").trim();
+        if (/^gh\s*\d+$/.test(normalized) || /^greenhouse\s*\d+$/.test(normalized)) {
+            return defaultLabel;
+        }
+
+        return label;
+    }
+
+    return defaultLabel;
+};
 </script>

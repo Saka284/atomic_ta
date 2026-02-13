@@ -282,6 +282,18 @@ const activeActuators = computed(() => {
     });
 });
 
+const getActuatorIconAnimationClass = (actuator) => {
+    if (!actuator?.status) {
+        return "";
+    }
+
+    if (actuator.key === "dehumidifier") {
+        return "actuator-dehumidifier-active";
+    }
+
+    return "actuator-fan-active";
+};
+
 const getChartColor = (sensorName) => {
     const colors = {
         Temperature: {
@@ -676,6 +688,9 @@ watch(locale, () => {
                                         :class="[
                                             actuator.icon,
                                             actuator.color,
+                                            getActuatorIconAnimationClass(
+                                                actuator
+                                            ),
                                             'text-3xl w-10',
                                         ]"
                                     ></i>
@@ -956,5 +971,36 @@ watch(locale, () => {
     padding-right: 0.5rem;
     padding-left: 2rem;
     font-size: 0.875rem;
+}
+
+.actuator-fan-active {
+    animation: actuator-fan-spin 1.5s linear infinite;
+    transform-origin: 50% 50%;
+}
+
+.actuator-dehumidifier-active {
+    animation: actuator-dehumidifier-pulse 1.7s ease-in-out infinite;
+    transform-origin: 50% 50%;
+}
+
+@keyframes actuator-fan-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes actuator-dehumidifier-pulse {
+    0%,
+    100% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(-2px) scale(1.08);
+        opacity: 0.82;
+    }
 }
 </style>
