@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { debounce } from "lodash";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import { Head, usePage } from "@inertiajs/vue3";
@@ -35,11 +35,13 @@ const CACHE_LIMIT = 40;
 let activeAbortController = null;
 let latestRequestId = 0;
 
-const columnDefs = ref([
+const columnDefs = computed(() => [
     {
-        headerName: "No",
+        headerName: t("table.no"),
         valueGetter: (params) => {
-            return (currentPage.value - 1) * perPage.value + params.node.rowIndex + 1;
+            return (
+                (currentPage.value - 1) * perPage.value + params.node.rowIndex + 1
+            );
         },
         minWidth: 60,
         maxWidth: 70,
@@ -47,44 +49,51 @@ const columnDefs = ref([
         sortable: false,
         resizable: false,
     },
-    { headerName: "Node", field: "node_id", filter: false, sortable: false, minWidth: 80, maxWidth: 90 },
     {
-        headerName: "Date",
+        headerName: t("table.node"),
+        field: "node_id",
+        filter: false,
+        sortable: false,
+        minWidth: 80,
+        maxWidth: 90,
+    },
+    {
+        headerName: t("table.date"),
         field: "date",
         filter: false,
         sortable: false,
         minWidth: 120,
     },
     {
-        headerName: "Time",
+        headerName: t("table.time"),
         field: "time",
         filter: false,
         sortable: false,
         minWidth: 100,
     },
     {
-        headerName: "Temperature (°C)",
+        headerName: t("table.temperature"),
         field: "temperature",
         filter: false,
         sortable: false,
         minWidth: 150,
     },
     {
-        headerName: "Humidity (%)",
+        headerName: t("table.humidity"),
         field: "humidity",
         filter: false,
         sortable: false,
         minWidth: 130,
     },
     {
-        headerName: "Light Intensity (lx)",
+        headerName: t("table.light_intensity"),
         field: "light_intensity",
         filter: false,
         sortable: false,
         minWidth: 160,
     },
     {
-        headerName: "RSSI (dBm)",
+        headerName: t("table.rssi"),
         field: "rssi",
         filter: false,
         sortable: false,
@@ -334,7 +343,7 @@ const exportData = async () => {
                 <div class="bg-white shadow-sm rounded-lg p-4">
                     <div class="flex flex-col md:flex-row justify-center md:justify-between mb-6 gap-4">
                         <h3 class="text-2xl text-center md:text-left self-center">
-                            Monitoring Data
+                            {{ t("table.monitoring_data") }}
                         </h3>
                         
                         <!-- Filter Controls -->
@@ -342,26 +351,26 @@ const exportData = async () => {
                             
                             <!-- Date Filter -->
                             <div class="flex items-center gap-2 w-full justify-end">
-                                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Date</span>
+                                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">{{ t("table.date") }}</span>
                                 <VueDatePicker
                                     v-model="daterange"
                                     range
                                     position:right
-                                    placeholder="Filter by Date"
+                                    :placeholder="t('table.filter_by_date')"
                                     class="w-64 shadow-sm"
                                 />
                             </div>
 
                             <!-- Node Filter & Export Action -->
                             <div class="flex gap-2 w-full justify-end items-center">
-                                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Node</span>
+                                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">{{ t("table.node") }}</span>
                                 <select 
                                     v-model="selectedNode"
                                     class="border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 rounded-md shadow-sm h-[38px] w-40 text-sm"
                                 >
-                                    <option value="">All Nodes</option>
+                                    <option value="">{{ t("table.all_nodes") }}</option>
                                     <option v-for="n in 5" :key="n" :value="activeTab == 1 ? n : n+5">
-                                        Node {{ activeTab == 1 ? n : n+5 }}
+                                        {{ t("table.node") }} {{ activeTab == 1 ? n : n+5 }}
                                     </option>
                                 </select>
                                 
@@ -371,10 +380,10 @@ const exportData = async () => {
                                     :disabled="isExporting"
                                     @click="exportData"
                                     class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded shadow-md h-[38px] flex items-center gap-2 transition-all transform active:scale-95"
-                                    title="Export Current View to Excel"
+                                    :title="t('table.export_current_view')"
                                 >
                                     <i :class="[isExporting ? 'fas fa-spinner fa-spin' : 'fas fa-file-excel']"></i>
-                                    <span class="text-sm font-semibold">Export</span>
+                                    <span class="text-sm font-semibold">{{ t("table.export") }}</span>
                                 </button>
                             </div>
                         </div>
@@ -386,7 +395,7 @@ const exportData = async () => {
                         <div v-if="isLoading" class="absolute inset-0 bg-white/80 z-10 flex items-center justify-center">
                             <div class="flex flex-col items-center gap-3">
                                 <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
-                                <span class="text-gray-600 font-medium">Memuat data...</span>
+                                <span class="text-gray-600 font-medium">{{ t("table.loading_data") }}</span>
                             </div>
                         </div>
                         <ag-grid-vue
@@ -426,7 +435,7 @@ const exportData = async () => {
                             </button>
                             
                             <span class="text-gray-600 mx-2">
-                                {{ fromRow() }} to {{ toRow() }} of {{ totalRows.toLocaleString() }}
+                                {{ fromRow() }} {{ t("common.to") }} {{ toRow() }} {{ t("common.of") }} {{ totalRows.toLocaleString() }}
                             </span>
 
                             <button @click="goToNext" :disabled="currentPage >= lastPage" class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">

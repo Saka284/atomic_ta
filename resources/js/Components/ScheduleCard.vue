@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from "vue";
+import { useLocale } from "@/composables/useLocale";
 
 const props = defineProps({
     schedule: {
@@ -13,14 +14,30 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update", "delete", "toggle"]);
+const { t } = useLocale();
 
 const isExpanded = ref(false);
 
-const actuators = [
-    { key: "blower", name: "Drum Fan", icon: "fas fa-fan", color: "text-red-500" },
-    { key: "exhaust", name: "Exhaust Fan", icon: "fas fa-fan", color: "text-yellow-500" },
-    { key: "dehumidifier", name: "Dehumidifier", icon: "fas fa-tint", color: "text-cyan-500" },
-];
+const actuators = computed(() => [
+    {
+        key: "blower",
+        name: t("monitoring.blower"),
+        icon: "fas fa-fan",
+        color: "text-red-500",
+    },
+    {
+        key: "exhaust",
+        name: t("monitoring.exhaust_fan"),
+        icon: "fas fa-fan",
+        color: "text-yellow-500",
+    },
+    {
+        key: "dehumidifier",
+        name: t("monitoring.dehumidifier"),
+        icon: "fas fa-tint",
+        color: "text-cyan-500",
+    },
+]);
 
 const updateTime = (field, value) => {
     emit("update", {
@@ -56,7 +73,7 @@ const toggleExpand = () => {
 const timeError = computed(() => {
     if (!props.schedule.start_time || !props.schedule.end_time) return null;
     if (props.schedule.start_time >= props.schedule.end_time) {
-        return "Start time must be before end time";
+        return t("controlling.invalid_time_range");
     }
     return null;
 });
@@ -64,16 +81,16 @@ const timeError = computed(() => {
 // Summary text for collapsed view
 const actuatorSummary = computed(() => {
     const summary = [];
-    for (const act of actuators) {
+    for (const act of actuators.value) {
         const state = props.schedule.actuators[act.key];
         if (state === "on") {
-            summary.push(`${act.name}: ON`);
+            summary.push(`${act.name}: ${t("monitoring.on")}`);
         } else if (state === "off") {
-            summary.push(`${act.name}: OFF`);
+            summary.push(`${act.name}: ${t("monitoring.off")}`);
         }
     }
     if (summary.length === 0) {
-        return "All actuators follow threshold";
+        return t("controlling.all_follow_threshold");
     }
     return summary.join(" • ");
 });
@@ -108,7 +125,8 @@ const actuatorSummary = computed(() => {
                     <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                         <span class="font-semibold text-gray-700">
                             <i class="fas fa-clock text-green-500 mr-2"></i>
-                            Schedule {{ index + 1 }}
+                            {{ t("controlling.schedule_label") }}
+                            {{ index + 1 }}
                         </span>
                         <span
                             class="text-lg font-mono px-3 py-1 rounded-lg"
@@ -138,7 +156,7 @@ const actuatorSummary = computed(() => {
                     <i
                         v-if="timeError"
                         class="fas fa-exclamation-circle text-red-500"
-                        title="Invalid time range"
+                        :title="t('controlling.invalid_time_range')"
                     ></i>
 
                     <!-- Toggle Switch -->
@@ -159,7 +177,7 @@ const actuatorSummary = computed(() => {
                     <button
                         @click="deleteSchedule"
                         class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                        title="Delete Schedule"
+                        :title="t('controlling.delete_schedule')"
                     >
                         <i class="fas fa-trash-alt"></i>
                     </button>
@@ -195,7 +213,7 @@ const actuatorSummary = computed(() => {
                                 class="block text-sm font-medium text-gray-600 mb-2"
                             >
                                 <i class="fas fa-play text-green-400 mr-1"></i>
-                                Start Time
+                                {{ t("controlling.start_time") }}
                             </label>
                             <input
                                 type="time"
@@ -217,7 +235,7 @@ const actuatorSummary = computed(() => {
                                 class="block text-sm font-medium text-gray-600 mb-2"
                             >
                                 <i class="fas fa-stop text-red-400 mr-1"></i>
-                                End Time
+                                {{ t("controlling.end_time") }}
                             </label>
                             <input
                                 type="time"
@@ -250,7 +268,7 @@ const actuatorSummary = computed(() => {
                         <h5
                             class="text-sm font-semibold text-gray-500 uppercase tracking-wide"
                         >
-                            Actuator Settings
+                            {{ t("controlling.actuator_settings") }}
                         </h5>
 
                         <div
@@ -302,7 +320,9 @@ const actuatorSummary = computed(() => {
                                         :disabled="!schedule.enabled"
                                         class="w-4 h-4 text-blue-500 focus:ring-blue-400"
                                     />
-                                    <span class="text-sm">Threshold</span>
+                                    <span class="text-sm">{{
+                                        t("controlling.threshold_mode")
+                                    }}</span>
                                 </label>
 
                                 <label
@@ -330,7 +350,9 @@ const actuatorSummary = computed(() => {
                                         :disabled="!schedule.enabled"
                                         class="w-4 h-4 text-green-500 focus:ring-green-400"
                                     />
-                                    <span class="text-sm">Force ON</span>
+                                    <span class="text-sm">{{
+                                        t("controlling.force_on")
+                                    }}</span>
                                 </label>
 
                                 <label
@@ -358,7 +380,9 @@ const actuatorSummary = computed(() => {
                                         :disabled="!schedule.enabled"
                                         class="w-4 h-4 text-red-500 focus:ring-red-400"
                                     />
-                                    <span class="text-sm">Force OFF</span>
+                                    <span class="text-sm">{{
+                                        t("controlling.force_off")
+                                    }}</span>
                                 </label>
                             </div>
                         </div>

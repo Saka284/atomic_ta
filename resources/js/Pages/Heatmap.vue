@@ -141,9 +141,9 @@ const currentGreenhouseImage = computed(() => currentGHConfig.value.image);
 // - label: nama yang ditampilkan di UI
 // ===============================
 const parameterConfig = {
-  temperature: { min: 0, max: 40, unit: '°C', label: 'Temperature' },
-  humidity: { min: 0, max: 100, unit: '%', label: 'Humidity' },
-  lux: { min: 0, max: 65535, unit: 'lux', label: 'Light Intensity' },
+  temperature: { min: 0, max: 40, unit: '°C', labelKey: 'sensor.temperature' },
+  humidity: { min: 0, max: 100, unit: '%', labelKey: 'sensor.humidity' },
+  lux: { min: 0, max: 65535, unit: 'lux', labelKey: 'sensor.light_intensity' },
 };
 
 // ===============================
@@ -158,6 +158,7 @@ const currentConfig = computed(() => {
   
   return {
     ...baseConfig,
+    label: t(baseConfig.labelKey),
     min: thresholds.min,  // Override dengan threshold min
     max: thresholds.max,  // Override dengan threshold max
   };
@@ -307,10 +308,10 @@ function getStatus(value) {
   
   // Tentukan text status berdasarkan zona
   let text;
-  if (normalized <= 0.3) text = "Aman";
-  else if (normalized <= 0.5) text = "Normal";
-  else if (normalized <= 1) text = "Waspada";
-  else text = "Kritis";
+  if (normalized <= 0.3) text = t("heatmap.safe");
+  else if (normalized <= 0.5) text = t("heatmap.normal");
+  else if (normalized <= 1) text = t("heatmap.warning");
+  else text = t("heatmap.critical");
   
   return { text, color };
 }
@@ -1003,14 +1004,14 @@ watch(
             <div class="legend-mobile-content">
               <div class="legend-mobile-edge">
                 <span class="edge-value">{{ currentConfig.min }}</span>
-                <span class="edge-label">Aman</span>
+                <span class="edge-label">{{ t("heatmap.safe") }}</span>
               </div>
               
               <div class="legend-mobile-bar" :style="legendGradientStyleHorizontal"></div>
               
               <div class="legend-mobile-edge">
                 <span class="edge-value">{{ currentConfig.max }}</span>
-                <span class="edge-label">Kritis</span>
+                <span class="edge-label">{{ t("heatmap.critical") }}</span>
               </div>
             </div>
           </div>
@@ -1029,11 +1030,11 @@ watch(
               
               <!-- Scale Labels (dynamic) -->
               <div class="legend-labels">
-                <span><b>{{ currentConfig.max }}</b><br />Kritis</span>
+                <span><b>{{ currentConfig.max }}</b><br />{{ t("heatmap.critical") }}</span>
                 <span>{{ Math.round(currentConfig.max * 0.75) }}</span>
                 <span>{{ Math.round(currentConfig.max * 0.5) }}</span>
                 <span>{{ Math.round(currentConfig.max * 0.25) }}</span>
-                <span><b>{{ currentConfig.min }}</b><br />Aman</span>
+                <span><b>{{ currentConfig.min }}</b><br />{{ t("heatmap.safe") }}</span>
               </div>
             </div>
             
@@ -1050,7 +1051,7 @@ watch(
               : 'param-inactive'"
             @click="activeParameter = 'temperature'"
           >
-            Temperature
+            {{ t("sensor.temperature") }}
           </button>
           <button
             class="param-btn"
@@ -1059,7 +1060,7 @@ watch(
               : 'param-inactive'"
             @click="activeParameter = 'humidity'"
           >
-            Humidity
+            {{ t("sensor.humidity") }}
           </button>
           <button
             class="param-btn"
@@ -1068,7 +1069,7 @@ watch(
               : 'param-inactive'"
             @click="activeParameter = 'lux'"
           >
-            Light Intensity
+            {{ t("sensor.light_intensity") }}
           </button>
         </div>
 

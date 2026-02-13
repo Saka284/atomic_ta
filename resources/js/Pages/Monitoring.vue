@@ -31,13 +31,30 @@ const CHART_CACHE_LIMIT = 200;
 const chartMode = ref({});
 const chartRange = ref({});
 
-const chartRangeOptions = [
-    { value: "custom", label: "ALL" },
+const chartRangeOptions = computed(() => [
+    { value: "custom", label: t("common.all").toUpperCase() },
     { value: "last_1h", label: "1H" },
     { value: "last_1d", label: "1D" },
     { value: "last_1w", label: "1W" },
     { value: "last_1m", label: "1M" },
-];
+]);
+
+const getSensorLabel = (sensorName = "") => {
+    const normalized = String(sensorName).trim().toLowerCase();
+    if (normalized === "temperature") {
+        return t("sensor.temperature");
+    }
+
+    if (normalized === "humidity") {
+        return t("sensor.humidity");
+    }
+
+    if (normalized === "light intensity" || normalized === "light_intensity") {
+        return t("sensor.light_intensity");
+    }
+
+    return sensorName;
+};
 
 const actuatorCards = computed(() => [
     {
@@ -569,7 +586,7 @@ watch(activeTab, async (newTab) => {
                                 class="mb-2 flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between"
                             >
                                 <h3 class="text-xl">
-                                    {{ sensor.name }}
+                                    {{ getSensorLabel(sensor.name) }}
                                 </h3>
 
                                 <div class="w-full lg:w-auto">
@@ -742,7 +759,7 @@ watch(activeTab, async (newTab) => {
                                         .chartLabel
                                 "
                                 :id="sensor.sensor_id"
-                                :sensor_name="sensor.name"
+                                :sensor_name="getSensorLabel(sensor.name)"
                                 :chartColor="
                                     data[activeTab]?.chart?.[sensor.sensor_id]
                                         .chartColor
@@ -767,7 +784,9 @@ watch(activeTab, async (newTab) => {
                             class="bg-white overflow-hidden shadow-sm rounded-lg w-full lg:w-1/4 p-4"
                         >
                             <div class="flex mb-4">
-                                <h3 class="text-xl">{{ sensor.name }}</h3>
+                                <h3 class="text-xl">
+                                    {{ getSensorLabel(sensor.name) }}
+                                </h3>
                             </div>
                             <!-- Gauge Component -->
                             <Gauge
@@ -776,7 +795,7 @@ watch(activeTab, async (newTab) => {
                                         sensor.sensor_id
                                     ] !== undefined
                                 "
-                                :title="sensor.name"
+                                :title="getSensorLabel(sensor.name)"
                                 :symbol="sensor.unit"
                                 :value="
                                     data[activeTab]?.gauge?.[sensor.sensor_id]

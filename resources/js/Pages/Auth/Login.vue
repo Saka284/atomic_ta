@@ -3,6 +3,7 @@ import BreezeButton from "@/Components/Button.vue";
 import BreezeGuestLayout from "@/Layouts/Guest.vue";
 import BreezeValidationErrors from "@/Components/ValidationErrors.vue";
 import { Head, useForm } from "@inertiajs/vue3";
+import { useLocale } from "@/composables/useLocale";
 
 defineProps({
     canResetPassword: Boolean,
@@ -14,6 +15,7 @@ const form = useForm({
     password: "",
     remember: false,
 });
+const { t } = useLocale();
 
 const submit = () => {
     form.post(route("login"), {
@@ -24,7 +26,7 @@ const submit = () => {
 
 <template>
     <BreezeGuestLayout>
-        <Head title="Log in" />
+        <Head :title="t('auth.login_title')" />
 
         <BreezeValidationErrors class="mb-4" />
 
@@ -52,7 +54,7 @@ const submit = () => {
                         'absolute bg-white px-1 left-3 transition-all peer-focus:text-green-500',
                     ]"
                 >
-                    Username
+                    {{ t("auth.username") }}
                 </label>
             </div>
 
@@ -75,7 +77,7 @@ const submit = () => {
                         'absolute bg-white px-1 left-3 transition-all peer-focus:text-green-500',
                     ]"
                 >
-                    Password
+                    {{ t("auth.password") }}
                 </label>
             </div>
 
@@ -85,7 +87,7 @@ const submit = () => {
                     :class="{ 'opacity-25': form.processing }"
                     :disabled="form.processing"
                 >
-                    <span v-if="!form.processing"> Log in </span>
+                    <span v-if="!form.processing">{{ t("auth.login") }}</span>
                     <i
                         v-else
                         class="fas fa-spinner fa-spin text-lg transition-opacity duration-300 ease-in-out"

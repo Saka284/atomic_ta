@@ -102,6 +102,23 @@ const getMaxValue = (unit) => {
     }
 };
 
+const getSensorLabel = (sensorName = "") => {
+    const normalized = String(sensorName).trim().toLowerCase();
+    if (normalized === "temperature") {
+        return t("sensor.temperature");
+    }
+
+    if (normalized === "humidity") {
+        return t("sensor.humidity");
+    }
+
+    if (normalized === "light intensity" || normalized === "light_intensity") {
+        return t("sensor.light_intensity");
+    }
+
+    return sensorName;
+};
+
 watch(
     [initialData, initialSchedules],
     (values) => {
@@ -408,7 +425,7 @@ const saveSchedules = async () => {
                             ]"
                         >
                             <i class="fas fa-sliders-h mr-2"></i>
-                            Threshold
+                            {{ t("controlling.threshold_tab") }}
                         </button>
                         <button
                             @click="activeSubTab = 'scheduling'"
@@ -420,7 +437,7 @@ const saveSchedules = async () => {
                             ]"
                         >
                             <i class="fas fa-clock mr-2"></i>
-                            Scheduling
+                            {{ t("controlling.scheduling_tab") }}
                         </button>
                     </div>
                 </div>
@@ -435,7 +452,7 @@ const saveSchedules = async () => {
                         <h3
                             class="text-2xl font-semibold text-gray-800 text-center md:text-left mb-10 border-b pb-2"
                         >
-                            {{ sensor.name }}
+                            {{ getSensorLabel(sensor.name) }}
                         </h3>
                         <div
                             class="flex flex-col items-center w-full gap-6 pt-4"
@@ -468,7 +485,7 @@ const saveSchedules = async () => {
                                         <span
                                             class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-xs sm:text-sm"
                                         >
-                                            Min
+                                            {{ t("controlling.min") }}
                                         </span>
                                         <input
                                             type="number"
@@ -490,7 +507,7 @@ const saveSchedules = async () => {
                                         <span
                                             class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-xs sm:text-sm"
                                         >
-                                            Max
+                                            {{ t("controlling.max") }}
                                         </span>
                                         <input
                                             type="number"
@@ -526,7 +543,7 @@ const saveSchedules = async () => {
                                 <span
                                     v-if="!isSaving"
                                     class="transition-opacity duration-300 ease-in-out"
-                                    >Save Thresholds</span
+                                    >{{ t("controlling.save_thresholds") }}</span
                                 >
                                 <i
                                     v-else
@@ -548,21 +565,29 @@ const saveSchedules = async () => {
                                 class="fas fa-info-circle text-blue-500 mt-0.5"
                             ></i>
                             <div class="text-sm text-blue-700">
-                                <p class="font-medium mb-1">Scheduling Mode</p>
+                                <p class="font-medium mb-1">
+                                    {{ t("controlling.scheduling_mode") }}
+                                </p>
                                 <ul
                                     class="list-disc list-inside space-y-1 text-blue-600"
                                 >
                                     <li>
-                                        <strong>Threshold</strong>: Actuator
-                                        follows sensor threshold (automatic)
+                                        <strong>{{
+                                            t("controlling.threshold_mode")
+                                        }}</strong>:
+                                        {{ t("controlling.rule_threshold_desc") }}
                                     </li>
                                     <li>
-                                        <strong>Force ON</strong>: Actuator
-                                        stays ON during scheduled time
+                                        <strong>{{
+                                            t("controlling.force_on")
+                                        }}</strong>:
+                                        {{ t("controlling.rule_force_on_desc") }}
                                     </li>
                                     <li>
-                                        <strong>Force OFF</strong>: Actuator
-                                        stays OFF during scheduled time
+                                        <strong>{{
+                                            t("controlling.force_off")
+                                        }}</strong>:
+                                        {{ t("controlling.rule_force_off_desc") }}
                                     </li>
                                 </ul>
                             </div>
@@ -600,14 +625,14 @@ const saveSchedules = async () => {
                             class="fas fa-calendar-plus text-4xl text-gray-400 mb-3"
                         ></i>
                         <p class="text-gray-500 mb-4">
-                            No schedules created yet
+                            {{ t("controlling.no_schedules") }}
                         </p>
                         <button
                             @click="addSchedule"
                             class="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
                         >
                             <i class="fas fa-plus mr-2"></i>
-                            Add First Schedule
+                            {{ t("controlling.add_first_schedule") }}
                         </button>
                     </div>
 
@@ -624,7 +649,7 @@ const saveSchedules = async () => {
                         >
                             <i class="fas fa-plus"></i>
                             <span
-                                >Add Schedule ({{
+                                >{{ t("controlling.add_schedule") }} ({{
                                     activeSchedules.length
                                 }}/4)</span
                             >
@@ -634,7 +659,7 @@ const saveSchedules = async () => {
                             class="w-full sm:w-auto px-6 py-3 bg-gray-100 text-gray-500 rounded-lg text-center"
                         >
                             <i class="fas fa-ban mr-2"></i>
-                            Maximum schedules reached (4/4)
+                            {{ t("controlling.max_schedule_reached") }} (4/4)
                         </div>
 
                         <!-- Save Button -->
@@ -661,7 +686,7 @@ const saveSchedules = async () => {
                                     class="transition-opacity duration-300 ease-in-out"
                                 >
                                     <i class="fas fa-save mr-2"></i>
-                                    Save All Schedules
+                                    {{ t("controlling.save_all_schedules") }}
                                 </span>
                                 <i
                                     v-else
