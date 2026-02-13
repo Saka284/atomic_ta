@@ -153,6 +153,14 @@ const getChartOptions = () => ({
     responsive: true,
     maintainAspectRatio: false,
     events: ["mousemove", "mouseout", "click", "touchstart", "touchmove"],
+    interaction: {
+        mode: "nearest",
+        intersect: false,
+    },
+    hover: {
+        mode: "nearest",
+        intersect: false,
+    },
     plugins: {
         legend: {
             position: "top",
@@ -207,32 +215,52 @@ const upsertChart = () => {
     chart.update("none");
 };
 
-const buildWatchSignature = () =>
-    JSON.stringify({
-        sensor_name: props.sensor_name || "",
-        labels: getChartLabels(),
-        data: Array.isArray(props.data) ? props.data : [],
-        datasets: Array.isArray(props.datasets)
-            ? props.datasets.map((dataset) => ({
-                  label:
-                      dataset?.label !== undefined && dataset?.label !== null
-                          ? String(dataset.label)
-                          : "",
-                  data: Array.isArray(dataset?.data) ? dataset.data : [],
-                  borderColor: dataset?.borderColor ?? null,
-                  backgroundColor: dataset?.backgroundColor ?? null,
-                  borderWidth: dataset?.borderWidth ?? null,
-                  tension: dataset?.tension ?? null,
-                  pointRadius: dataset?.pointRadius ?? null,
-                  pointHoverRadius: dataset?.pointHoverRadius ?? null,
-                  fill: dataset?.fill ?? null,
-              }))
-            : [],
-        chartColor: {
-            background: props.chartColor?.background ?? "",
-            border: props.chartColor?.border ?? "",
-        },
-    });
+const normalizeWatchValue = (value) =>
+    value === null || value === undefined ? "" : String(value);
+
+const toListSignature = (list = []) =>
+    Array.isArray(list)
+        ? list.map((item) => normalizeWatchValue(item)).join("\u0001")
+        : "";
+
+const buildDatasetSignature = (dataset = {}) => {
+    const safeDataset =
+        dataset && typeof dataset === "object" ? dataset : {};
+
+    return [
+        normalizeWatchValue(safeDataset.label),
+        toListSignature(
+            Array.isArray(safeDataset.data) ? safeDataset.data : []
+        ),
+        normalizeWatchValue(safeDataset.borderColor),
+        normalizeWatchValue(safeDataset.backgroundColor),
+        normalizeWatchValue(safeDataset.borderWidth),
+        normalizeWatchValue(safeDataset.tension),
+        normalizeWatchValue(safeDataset.pointRadius),
+        normalizeWatchValue(safeDataset.pointHoverRadius),
+        normalizeWatchValue(safeDataset.fill),
+    ].join("|");
+};
+
+const buildWatchSignature = () => {
+    const labelSignature = toListSignature(getChartLabels());
+    const dataSignature = toListSignature(
+        Array.isArray(props.data) ? props.data : []
+    );
+    const datasets = Array.isArray(props.datasets) ? props.datasets : [];
+    const datasetSignature = datasets
+        .map((dataset) => buildDatasetSignature(dataset))
+        .join("||");
+
+    return [
+        normalizeWatchValue(props.sensor_name),
+        normalizeWatchValue(props.chartColor?.background),
+        normalizeWatchValue(props.chartColor?.border),
+        labelSignature,
+        dataSignature,
+        datasetSignature,
+    ].join("::");
+};
 
 watch(
     buildWatchSignature,
