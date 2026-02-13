@@ -15,8 +15,162 @@ use Inertia\Inertia;
 
 class PageController extends Controller
 {
+    private function ensureSensorSnapshotsReady(): void
+    {
+        if (Cache::has('sensor_snapshots_ready')) {
+            return;
+        }
+
+        $snapshotCount = DB::table('sensor_snapshots')->count();
+        if ($snapshotCount === 0) {
+            DB::statement("
+                INSERT INTO sensor_snapshots (sensor_id, node_id, value, recorded_at, created_at, updated_at)
+                SELECT sd.sensor_id, sd.node_id, sd.value, sd.recorded_at, NOW(), NOW()
+                FROM sensor_data sd
+                INNER JOIN (
+                    SELECT sensor_id, node_id, MAX(id) AS latest_id
+                    FROM sensor_data
+                    GROUP BY sensor_id, node_id
+                ) latest ON latest.latest_id = sd.id
+                ON DUPLICATE KEY UPDATE
+                    value = VALUES(value),
+                    recorded_at = VALUES(recorded_at),
+                    updated_at = VALUES(updated_at)
+            ");
+
+            Cache::forget('gaugeData');
+            Cache::forget('monitoring_latest_time');
+            Cache::forget('heatmap_sensor_data');
+            Cache::forget('heatmap_latest_time');
+        }
+
+        Cache::put('sensor_snapshots_ready', true, 600);
+    }
+
+    private function isSensorOutOfThreshold(?array $sensorSnapshot): bool
+    {
+        if (!$sensorSnapshot) {
+            return false;
+        }
+
+        $value = (float) ($sensorSnapshot['value'] ?? 0);
+        $thresholdMin = (float) ($sensorSnapshot['threshold_min'] ?? 0);
+        $thresholdMax = (float) ($sensorSnapshot['threshold_max'] ?? 0);
+
+        return $value < $thresholdMin || $value > $thresholdMax;
+    }
+
+    private function resolveActuatorState(?string $mode, ?array $sensorSnapshot): array
+    {
+        $normalizedMode = in_array($mode, ['on', 'off', 'threshold'], true)
+            ? $mode
+            : 'threshold';
+
+        if ($normalizedMode === 'on') {
+            return ['status' => true, 'mode' => 'on'];
+        }
+
+        if ($normalizedMode === 'off') {
+            return ['status' => false, 'mode' => 'off'];
+        }
+
+        return [
+            'status' => $this->isSensorOutOfThreshold($sensorSnapshot),
+            'mode' => 'threshold',
+        ];
+    }
+
+    private function buildMonitoringActuatorStatus(): array
+    {
+        $greenhouseIds = Cache::remember('greenhouses', 3600, function () {
+            return Greenhouse::select('id')->orderBy('id')->get();
+        })->pluck('id')->map(fn($id) => (int) $id)->toArray();
+
+        if (empty($greenhouseIds)) {
+            return [];
+        }
+
+        $sensorRows = DB::select("
+            SELECT
+                s.gh_id,
+                s.name,
+                s.threshold_min,
+                s.threshold_max,
+                AVG(ss.value) AS avg_value
+            FROM sensor_snapshots ss
+            JOIN sensors s ON s.id = ss.sensor_id
+            WHERE s.name IN ('Temperature', 'Humidity')
+            GROUP BY
+                s.gh_id,
+                s.name,
+                s.threshold_min,
+                s.threshold_max
+        ");
+
+        $sensorByGh = [];
+        foreach ($sensorRows as $row) {
+            $ghId = (int) $row->gh_id;
+            $sensorByGh[$ghId][$row->name] = [
+                'value' => (float) $row->avg_value,
+                'threshold_min' => (float) $row->threshold_min,
+                'threshold_max' => (float) $row->threshold_max,
+            ];
+        }
+
+        $now = now()->format('H:i:s');
+        $activeSchedules = DB::select("
+            SELECT
+                gh_id,
+                relay_exhaust,
+                relay_dehumidifier,
+                relay_blower
+            FROM schedules
+            WHERE enabled = 1
+              AND (
+                    (start_time <= end_time AND start_time <= ? AND end_time >= ?)
+                    OR
+                    (start_time > end_time AND (start_time <= ? OR end_time >= ?))
+                  )
+            ORDER BY gh_id ASC, start_time DESC
+        ", [$now, $now, $now, $now]);
+
+        $scheduleByGh = [];
+        foreach ($activeSchedules as $schedule) {
+            $ghId = (int) $schedule->gh_id;
+            if (!isset($scheduleByGh[$ghId])) {
+                $scheduleByGh[$ghId] = $schedule;
+            }
+        }
+
+        $result = [];
+        foreach ($greenhouseIds as $ghId) {
+            $temperature = $sensorByGh[$ghId]['Temperature'] ?? null;
+            $humidity = $sensorByGh[$ghId]['Humidity'] ?? null;
+            $schedule = $scheduleByGh[$ghId] ?? null;
+
+            $result[$ghId] = [
+                'exhaust' => $this->resolveActuatorState(
+                    $schedule?->relay_exhaust,
+                    $humidity
+                ),
+                'dehumidifier' => $this->resolveActuatorState(
+                    $schedule?->relay_dehumidifier,
+                    $humidity
+                ),
+                'blower' => $this->resolveActuatorState(
+                    $schedule?->relay_blower,
+                    $temperature
+                ),
+            ];
+        }
+
+        return $result;
+    }
+
     public function monitoring()
     {
+        $this->ensureSensorSnapshotsReady();
+
         return Inertia::render('Monitoring', [
             'gaugeData' => Inertia::defer(function () {
                 return Cache::remember('gaugeData', 5, function () {
@@ -61,6 +215,11 @@ class PageController extends Controller
                     return $rows;
                 });
             }, 'monitoring'),
+            'actuatorStatus' => Inertia::defer(function () {
+                return Cache::remember('monitoring_actuator_status', 10, function () {
+                    return $this->buildMonitoringActuatorStatus();
+                });
+            }, 'monitoring'),
         ]);
     }
 
@@ -77,6 +236,8 @@ class PageController extends Controller
 
     public function heatmap(Request $request)
     {
+        $this->ensureSensorSnapshotsReady();
+
         $activeGhId = $request->input('gh_id', 1);
 
         // ===============================
@@ -274,18 +435,48 @@ class PageController extends Controller
         return Inertia::render('Controlling', [
             'initialData' => Inertia::defer(function () {
                 return Cache::remember('controlling_data', 60, function () {
-                    return Greenhouse::with(['sensor' => function ($query) {
-                        $query->whereNotIn('name', ['RSSI']);
-                    }])->get();
+                    return Greenhouse::query()
+                        ->select(['id', 'name'])
+                        ->with([
+                            'sensor' => function ($query) {
+                                $query->select(['id', 'gh_id', 'name', 'unit', 'threshold_min', 'threshold_max'])
+                                    ->where('name', '!=', 'RSSI');
+                            }
+                        ])
+                        ->get();
                 });
             }, 'controlling'),
             'initialSchedules' => Inertia::defer(function () {
                 return Cache::remember('controlling_schedules', 60, function () {
                     $schedules = [];
-                    $allSchedules = Schedule::orderBy('gh_id')->orderBy('start_time')->get();
+                    $allSchedules = Schedule::query()
+                        ->select([
+                            'id',
+                            'gh_id',
+                            'enabled',
+                            'start_time',
+                            'end_time',
+                            'relay_exhaust',
+                            'relay_dehumidifier',
+                            'relay_blower',
+                        ])
+                        ->orderBy('gh_id')
+                        ->orderBy('start_time')
+                        ->get();
 
                     foreach ($allSchedules as $schedule) {
-                        $schedules[$schedule->gh_id][] = $schedule;
+                        $schedules[$schedule->gh_id][] = [
+                            'id' => $schedule->id,
+                            'greenhouse_id' => $schedule->gh_id,
+                            'enabled' => (bool) $schedule->enabled,
+                            'start_time' => substr((string) $schedule->start_time, 0, 5),
+                            'end_time' => substr((string) $schedule->end_time, 0, 5),
+                            'actuators' => [
+                                'blower' => $schedule->relay_blower,
+                                'exhaust' => $schedule->relay_exhaust,
+                                'dehumidifier' => $schedule->relay_dehumidifier,
+                            ],
+                        ];
                     }
 
                     return $schedules;

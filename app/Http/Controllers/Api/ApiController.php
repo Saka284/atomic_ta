@@ -85,6 +85,16 @@ class ApiController extends Controller
                 );
             });
 
+            foreach (array_unique(array_column($data, 'sensor_id')) as $sensorId) {
+                Cache::forget("sensor_latest_date_{$sensorId}");
+            }
+            Cache::forget('sensor_snapshots_ready');
+            Cache::forget('gaugeData');
+            Cache::forget('monitoring_latest_time');
+            Cache::forget('monitoring_actuator_status');
+            Cache::forget('heatmap_sensor_data');
+            Cache::forget('heatmap_latest_time');
+
             return response()->json([
                 'success' => true,
                 'data' => $data
@@ -346,76 +356,233 @@ class ApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Sensor ID is required.'], 400);
         }
 
-        $sensor_id = $decodedData['sensor_id'];
-        $date_start = !empty($decodedData['date_start']) ? $decodedData['date_start'] : now()->toDateString();
+        $sensor_id = (int) $decodedData['sensor_id'];
+        $mode = $decodedData['mode'] ?? 'avg';
+        if (!in_array($mode, ['avg', 'per_node'], true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid chart mode.'], 422);
+        }
+        $range = $decodedData['range'] ?? 'custom';
+        if (!in_array($range, ['custom', 'last_1h', 'last_1d', 'last_1w', 'last_1m'], true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid chart range.'], 422);
+        }
+
+        $latestRecordedAt = Cache::remember("sensor_latest_date_{$sensor_id}", 60, function () use ($sensor_id) {
+            return DB::table('sensor_data')->where('sensor_id', $sensor_id)->max('recorded_at');
+        });
+
+        $defaultDate = $latestRecordedAt
+            ? Carbon::parse($latestRecordedAt)->toDateString()
+            : now()->toDateString();
+
+        $date_start = !empty($decodedData['date_start']) ? $decodedData['date_start'] : $defaultDate;
         $date_end = !empty($decodedData['date_end']) ? $decodedData['date_end'] : null;
         $time = !empty($decodedData['time']) ? $decodedData['time'] : null;
 
-        // Optimization: Raw SQL to skip hydration checks
-        $sensorExists = DB::selectOne("SELECT 1 FROM sensors WHERE id = ?", [$sensor_id]);
+        $sensorExists = DB::selectOne("SELECT gh_id FROM sensors WHERE id = ?", [$sensor_id]);
         if (!$sensorExists) {
             return response()->json(['success' => false, 'message' => 'Sensor not found.'], 404);
         }
 
+        $gh_id = (int) ($decodedData['gh_id'] ?? $sensorExists->gh_id);
+
         // Cache Key based on request params
         $cacheKey = 'chart_' . md5($dict);
 
-        // Optimization: Cache result for 60 seconds
-        return Cache::remember($cacheKey, 60, function () use ($sensor_id, $date_start, $date_end, $time) {
-            
-            if ($time) {
-                // Minute-by-minute data for a specific hour
-                $hour = date('H', strtotime($time));
-                $start = Carbon::parse($date_start)->setTime((int) $hour, 0, 0);
-                $end = (clone $start)->addHour();
+        $payload = Cache::remember($cacheKey, 60, function () use ($sensor_id, $date_start, $date_end, $time, $mode, $gh_id, $range) {
+            [$start, $end, $bucketSqlFormat, $bucketType] = $this->resolveChartWindow(
+                $range,
+                $date_start,
+                $date_end,
+                $time
+            );
+
+            if ($mode === 'per_node') {
                 $sql = "
-                    SELECT value as avg_value, recorded_at 
-                    FROM sensor_data 
-                    WHERE sensor_id = ? 
-                    AND recorded_at >= ? 
-                    AND recorded_at < ?
-                    ORDER BY recorded_at ASC
-                ";
-                $params = [$sensor_id, $start->toDateTimeString(), $end->toDateTimeString()];
-                $dataQuery = DB::select($sql, $params);
-                
-                $labels = array_map(fn($row) => date('H:i', strtotime($row->recorded_at)), $dataQuery);
-                $values = array_column($dataQuery, 'avg_value');
-    
-            } else {
-                // Hourly Average Calculation pushed to MySQL
-                $start = Carbon::parse($date_start)->startOfDay();
-                $end = $date_end
-                    ? Carbon::parse($date_end)->addDay()->startOfDay()
-                    : (clone $start)->addDay();
-                $sql = "
-                    SELECT 
-                        DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00:00') as hour_group,
+                    SELECT
+                        node_id,
+                        DATE_FORMAT(recorded_at, '{$bucketSqlFormat}') as bucket,
                         AVG(value) as avg_value
                     FROM sensor_data
                     WHERE sensor_id = ?
+                      AND recorded_at >= ?
+                      AND recorded_at < ?
+                    GROUP BY node_id, bucket
+                    ORDER BY bucket ASC, node_id ASC
                 ";
-                $params = [
+
+                $rows = DB::select($sql, [
                     $sensor_id,
                     $start->toDateTimeString(),
                     $end->toDateTimeString(),
+                ]);
+
+                $rawLabels = array_values(array_unique(array_map(fn($row) => $row->bucket, $rows)));
+                sort($rawLabels);
+                $labelIndexes = array_flip($rawLabels);
+
+                $nodeIds = $this->resolveNodeIdsForChart(
+                    $gh_id,
+                    $sensor_id,
+                    $start->toDateTimeString(),
+                    $end->toDateTimeString()
+                );
+
+                $nodeSeries = [];
+                foreach ($nodeIds as $nodeId) {
+                    $nodeSeries[$nodeId] = array_fill(0, count($rawLabels), null);
+                }
+
+                foreach ($rows as $row) {
+                    $nodeId = (int) $row->node_id;
+                    if (!array_key_exists($nodeId, $nodeSeries)) {
+                        $nodeSeries[$nodeId] = array_fill(0, count($rawLabels), null);
+                    }
+
+                    if (isset($labelIndexes[$row->bucket])) {
+                        $nodeSeries[$nodeId][$labelIndexes[$row->bucket]] = (float) $row->avg_value;
+                    }
+                }
+
+                $labels = array_map(
+                    fn($bucket) => $this->formatChartBucketLabel($bucket, $bucketType),
+                    $rawLabels
+                );
+
+                $datasets = [];
+                foreach ($nodeSeries as $nodeId => $values) {
+                    $datasets[] = [
+                        'node_id' => (int) $nodeId,
+                        'label' => "Node {$nodeId}",
+                        'data' => $values,
+                    ];
+                }
+
+                return [
+                    'mode' => 'per_node',
+                    'label' => $labels,
+                    'data' => [],
+                    'datasets' => $datasets,
                 ];
-                $sql .= " AND recorded_at >= ? AND recorded_at < ?";
-    
-                $sql .= " GROUP BY hour_group ORDER BY hour_group ASC";
-    
-                $dataQuery = DB::select($sql, $params);
-    
-                $labels = array_map(fn($row) => date('d M H:i', strtotime($row->hour_group)), $dataQuery);
-                $values = array_column($dataQuery, 'avg_value');
             }
-    
-            // Optimization: Return plain array, no collection overhead
-            return response()->json([
+
+            $sql = "
+                SELECT
+                    DATE_FORMAT(recorded_at, '{$bucketSqlFormat}') as bucket,
+                    AVG(value) as avg_value
+                FROM sensor_data
+                WHERE sensor_id = ?
+                  AND recorded_at >= ?
+                  AND recorded_at < ?
+                GROUP BY bucket
+                ORDER BY bucket ASC
+            ";
+            $dataQuery = DB::select($sql, [
+                $sensor_id,
+                $start->toDateTimeString(),
+                $end->toDateTimeString(),
+            ]);
+
+            $labels = array_map(
+                fn($row) => $this->formatChartBucketLabel($row->bucket, $bucketType),
+                $dataQuery
+            );
+            $values = array_map(fn($row) => (float) $row->avg_value, $dataQuery);
+
+            return [
+                'mode' => 'avg',
                 'data' => $values,
                 'label' => $labels,
-            ]);
+                'datasets' => [],
+            ];
         });
+
+        return response()->json($payload);
+    }
+
+    private function resolveChartWindow(string $range, string $dateStart, ?string $dateEnd, ?string $time): array
+    {
+        if ($range !== 'custom') {
+            $end = now();
+            if ($range === 'last_1h') {
+                return [(clone $end)->subHour(), $end, '%Y-%m-%d %H:%i:00', 'minute'];
+            }
+
+            if ($range === 'last_1d') {
+                return [(clone $end)->subDay(), $end, '%Y-%m-%d %H:00:00', 'hour'];
+            }
+
+            if ($range === 'last_1w') {
+                return [(clone $end)->subWeek(), $end, '%Y-%m-%d %H:00:00', 'hour'];
+            }
+
+            return [(clone $end)->subMonth(), $end, '%Y-%m-%d', 'day'];
+        }
+
+        if ($time) {
+            $hour = (int) date('H', strtotime($time));
+            $start = Carbon::parse($dateStart)->setTime($hour, 0, 0);
+            return [$start, (clone $start)->addHour(), '%Y-%m-%d %H:%i:00', 'minute'];
+        }
+
+        $start = Carbon::parse($dateStart)->startOfDay();
+        $end = $dateEnd
+            ? Carbon::parse($dateEnd)->addDay()->startOfDay()
+            : (clone $start)->addDay();
+
+        return [$start, $end, '%Y-%m-%d %H:00:00', 'hour'];
+    }
+
+    private function formatChartBucketLabel(string $bucket, string $bucketType): string
+    {
+        try {
+            $date = Carbon::parse($bucket);
+        } catch (\Throwable $e) {
+            return $bucket;
+        }
+
+        if ($bucketType === 'minute') {
+            return $date->format('H:i');
+        }
+
+        if ($bucketType === 'day') {
+            return $date->format('d M');
+        }
+
+        return $date->format('d M H:i');
+    }
+
+    private function resolveNodeIdsForChart(int $ghId, int $sensorId, string $start, string $end): array
+    {
+        if ($ghId === 1) {
+            return [1, 2, 3, 4, 5];
+        }
+
+        if ($ghId === 2) {
+            return [6, 7, 8, 9, 10];
+        }
+
+        $rows = DB::select("
+            SELECT DISTINCT node_id
+            FROM sensor_data
+            WHERE sensor_id = ?
+              AND recorded_at >= ?
+              AND recorded_at < ?
+            ORDER BY node_id ASC
+        ", [$sensorId, $start, $end]);
+
+        $nodeIds = array_map(fn($row) => (int) $row->node_id, $rows);
+        if (!empty($nodeIds)) {
+            return $nodeIds;
+        }
+
+        $fallbackRows = DB::select("
+            SELECT DISTINCT node_id
+            FROM sensor_data
+            WHERE sensor_id = ?
+            ORDER BY node_id ASC
+        ", [$sensorId]);
+
+        return array_map(fn($row) => (int) $row->node_id, $fallbackRows);
     }
 
 
@@ -431,253 +598,191 @@ class ApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid JSON format.'], 400);
         }
 
-        $gh_id = $decodedData['gh_id'];
+        $gh_id = (int) ($decodedData['gh_id'] ?? 0);
+        if ($gh_id <= 0) {
+            return response()->json(['success' => false, 'message' => 'Greenhouse ID is required.'], 422);
+        }
+
         $page = max(1, (int) ($decodedData['page'] ?? 1));
-        $perPage = min(100, max(1, (int) ($decodedData['per_page'] ?? 10)));
+        $perPage = max(1, (int) ($decodedData['per_page'] ?? 10));
         $offset = ($page - 1) * $perPage;
 
-        // Sort parameters
-        $allowedSortColumns = ['node_id', 'date', 'time', 'temperature', 'humidity', 'light_intensity', 'rssi'];
-        $sortBy = $decodedData['sort_by'] ?? 'date';
-        $sortDir = strtoupper($decodedData['sort_dir'] ?? 'DESC');
-        if (!in_array($sortBy, $allowedSortColumns)) $sortBy = 'date';
-        if (!in_array($sortDir, ['ASC', 'DESC'])) $sortDir = 'DESC';
-
-        // Column filter parameters (from AG Grid)
-        $columnFilters = $decodedData['column_filters'] ?? [];
-
-        // Optimization: Raw SQL for check
-        $greenhouseExists = DB::selectOne("SELECT 1 FROM greenhouses WHERE id = ?", [$gh_id]);
+        $greenhouseExists = Cache::remember("greenhouse_exists_{$gh_id}", 3600, function () use ($gh_id) {
+            return DB::selectOne("SELECT 1 FROM greenhouses WHERE id = ?", [$gh_id]) !== null;
+        });
         if (!$greenhouseExists) {
             return response()->json(['success' => false, 'message' => 'Greenhouse not found.'], 404);
         }
 
-        // Cache Key based on all request params including pagination
-        $cacheKey = 'table_' . md5($dict);
+        $sensorIds = Cache::remember("sensor_ids_{$gh_id}", 3600, function () use ($gh_id) {
+            return Sensor::where('gh_id', $gh_id)->pluck('id', 'name')->toArray();
+        });
 
-        // Optimization: Cache result for 60 seconds
-        return Cache::remember($cacheKey, 60, function () use ($gh_id, $decodedData, $page, $perPage, $offset, $sortBy, $sortDir, $columnFilters) {
-            $sensorIds = Cache::remember("sensor_ids_{$gh_id}", 3600, function () use ($gh_id) {
-                return Sensor::where('gh_id', $gh_id)->pluck('id', 'name')->toArray();
-            });
+        $sensorIdMap = [
+            'temperature' => $sensorIds['Temperature'] ?? null,
+            'humidity' => $sensorIds['Humidity'] ?? null,
+            'light_intensity' => $sensorIds['Light Intensity'] ?? null,
+            'rssi' => $sensorIds['RSSI'] ?? null,
+        ];
 
-            $sensorIdMap = [
-                'temperature' => $sensorIds['Temperature'] ?? null,
-                'humidity' => $sensorIds['Humidity'] ?? null,
-                'light_intensity' => $sensorIds['Light Intensity'] ?? null,
-                'rssi' => $sensorIds['RSSI'] ?? null,
-            ];
+        $inIds = array_values(array_filter($sensorIdMap));
+        if (empty($inIds)) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'total' => 0,
+                'page' => $page,
+                'per_page' => $perPage,
+                'last_page' => 1,
+            ]);
+        }
 
-            $caseParams = [
+        $startTime = $decodedData['start_date'] ?? null;
+        $endTime = $decodedData['end_date'] ?? null;
+        $nodeId = isset($decodedData['node_id']) && $decodedData['node_id'] !== ''
+            ? (int) $decodedData['node_id']
+            : null;
+
+        if (($startTime && !$endTime) || (!$startTime && $endTime)) {
+            return response()->json(['success' => false, 'message' => 'Both start_date and end_date are required.'], 422);
+        }
+
+        $baseSensorId = $sensorIdMap['temperature']
+            ?? $sensorIdMap['humidity']
+            ?? $sensorIdMap['light_intensity']
+            ?? $sensorIdMap['rssi']
+            ?? null;
+
+        if ($baseSensorId === null) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'total' => 0,
+                'page' => $page,
+                'per_page' => $perPage,
+                'last_page' => 1,
+            ]);
+        }
+
+        $whereClause = "base.sensor_id = ?";
+        $filterParams = [$baseSensorId];
+
+        if ($startTime && $endTime) {
+            try {
+                $start = Carbon::parse($startTime)->startOfDay()->toDateTimeString();
+                $end = Carbon::parse($endTime)->addDay()->startOfDay()->toDateTimeString();
+            } catch (\Throwable $e) {
+                return response()->json(['success' => false, 'message' => 'Invalid date range.'], 422);
+            }
+
+            $whereClause .= " AND base.recorded_at >= ? AND base.recorded_at < ?";
+            $filterParams[] = $start;
+            $filterParams[] = $end;
+        }
+
+        if ($nodeId !== null && $nodeId > 0) {
+            $whereClause .= " AND base.node_id = ?";
+            $filterParams[] = $nodeId;
+        }
+
+        $countKeyPayload = [
+            'gh_id' => $gh_id,
+            'base_sensor_id' => $baseSensorId,
+            'start_date' => $startTime,
+            'end_date' => $endTime,
+            'node_id' => $nodeId,
+        ];
+        $countCacheKey = 'table_count_' . md5(json_encode($countKeyPayload));
+
+        $total = Cache::remember($countCacheKey, 60, function () use ($whereClause, $filterParams) {
+            $countSql = "SELECT COUNT(*) as total FROM (
+                SELECT 1 FROM sensor_data base WHERE $whereClause GROUP BY base.node_id, base.recorded_at
+            ) as cnt";
+            $totalResult = DB::selectOne($countSql, $filterParams);
+            return (int) ($totalResult->total ?? 0);
+        });
+
+        $pageCacheKey = 'table_page_' . md5(json_encode([
+            'filters' => $countKeyPayload,
+            'page' => $page,
+            'per_page' => $perPage,
+        ]));
+
+        $payload = Cache::remember($pageCacheKey, 60, function () use ($whereClause, $filterParams, $sensorIdMap, $perPage, $offset, $page, $total) {
+            $dataSql = "
+                SELECT 
+                    page_rows.node_id,
+                    DATE(page_rows.recorded_at) as date,
+                    TIME(page_rows.recorded_at) as time,
+                    (
+                        SELECT sd_t.value
+                        FROM sensor_data sd_t
+                        WHERE sd_t.sensor_id = ?
+                          AND sd_t.node_id = page_rows.node_id
+                          AND sd_t.recorded_at = page_rows.recorded_at
+                        ORDER BY sd_t.id DESC
+                        LIMIT 1
+                    ) as temperature,
+                    (
+                        SELECT sd_h.value
+                        FROM sensor_data sd_h
+                        WHERE sd_h.sensor_id = ?
+                          AND sd_h.node_id = page_rows.node_id
+                          AND sd_h.recorded_at = page_rows.recorded_at
+                        ORDER BY sd_h.id DESC
+                        LIMIT 1
+                    ) as humidity,
+                    (
+                        SELECT sd_l.value
+                        FROM sensor_data sd_l
+                        WHERE sd_l.sensor_id = ?
+                          AND sd_l.node_id = page_rows.node_id
+                          AND sd_l.recorded_at = page_rows.recorded_at
+                        ORDER BY sd_l.id DESC
+                        LIMIT 1
+                    ) as light_intensity,
+                    (
+                        SELECT sd_r.value
+                        FROM sensor_data sd_r
+                        WHERE sd_r.sensor_id = ?
+                          AND sd_r.node_id = page_rows.node_id
+                          AND sd_r.recorded_at = page_rows.recorded_at
+                        ORDER BY sd_r.id DESC
+                        LIMIT 1
+                    ) as rssi
+                FROM (
+                    SELECT
+                        base.node_id,
+                        base.recorded_at
+                    FROM sensor_data base
+                    WHERE $whereClause
+                    GROUP BY base.node_id, base.recorded_at
+                    ORDER BY base.recorded_at DESC, base.node_id ASC
+                    LIMIT ? OFFSET ?
+                ) as page_rows
+                ORDER BY page_rows.recorded_at DESC, page_rows.node_id ASC
+            ";
+
+            $dataParams = array_merge([
                 $sensorIdMap['temperature'],
                 $sensorIdMap['humidity'],
                 $sensorIdMap['light_intensity'],
                 $sensorIdMap['rssi'],
-            ];
-
-            $inIds = array_values(array_filter($sensorIdMap));
-            if (empty($inIds)) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [],
-                    'total' => 0,
-                    'page' => $page,
-                    'per_page' => $perPage,
-                    'last_page' => 1,
-                ]);
-            }
-
-            // Dynamic Filters
-            $startTime = $decodedData['start_date'] ?? null;
-            $endTime = $decodedData['end_date'] ?? null;
-            $nodeId = $decodedData['node_id'] ?? null;
-
-            $placeholders = implode(',', array_fill(0, count($inIds), '?'));
-
-            // Build WHERE clause (shared between count and data queries)
-            $whereClause = "sd.sensor_id IN ($placeholders)";
-            $filterParams = $inIds;
-
-            if ($startTime && $endTime) {
-                $start = Carbon::parse($startTime)->startOfDay()->toDateTimeString();
-                $end = Carbon::parse($endTime)->addDay()->startOfDay()->toDateTimeString();
-                $whereClause .= " AND sd.recorded_at >= ? AND sd.recorded_at < ?";
-                $filterParams[] = $start;
-                $filterParams[] = $end;
-            }
-
-            if ($nodeId) {
-                $whereClause .= " AND sd.node_id = ?";
-                $filterParams[] = $nodeId;
-            }
-
-            // Build HAVING clause for column filters (aggregated columns)
-            $havingClause = '';
-            $havingParams = [];
-            $havingParts = [];
-
-            // Map column names to their HAVING expressions
-            $havingColumnMap = [
-                'node_id' => 'sd.node_id',
-                'date' => 'DATE(sd.recorded_at)',
-                'time' => 'TIME(sd.recorded_at)',
-                'temperature' => 'MAX(CASE WHEN sd.sensor_id = ' . ((int)($sensorIdMap['temperature'] ?? 0)) . ' THEN sd.value END)',
-                'humidity' => 'MAX(CASE WHEN sd.sensor_id = ' . ((int)($sensorIdMap['humidity'] ?? 0)) . ' THEN sd.value END)',
-                'light_intensity' => 'MAX(CASE WHEN sd.sensor_id = ' . ((int)($sensorIdMap['light_intensity'] ?? 0)) . ' THEN sd.value END)',
-                'rssi' => 'MAX(CASE WHEN sd.sensor_id = ' . ((int)($sensorIdMap['rssi'] ?? 0)) . ' THEN sd.value END)',
-            ];
-
-            foreach ($columnFilters as $colName => $filterDef) {
-                if (!isset($havingColumnMap[$colName])) continue;
-                $expr = $havingColumnMap[$colName];
-                $type = $filterDef['filterType'] ?? 'number';
-                $condType = $filterDef['type'] ?? 'equals';
-                $filterVal = $filterDef['filter'] ?? null;
-                $filterTo = $filterDef['filterTo'] ?? null;
-
-                if ($filterVal === null && $condType !== 'blank' && $condType !== 'notBlank') continue;
-
-                if ($type === 'text') {
-                    // Text filter handling (for date, time columns)
-                    switch ($condType) {
-                        case 'contains':
-                            $havingParts[] = "$expr LIKE ?";
-                            $havingParams[] = "%$filterVal%";
-                            break;
-                        case 'notContains':
-                            $havingParts[] = "$expr NOT LIKE ?";
-                            $havingParams[] = "%$filterVal%";
-                            break;
-                        case 'equals':
-                            $havingParts[] = "$expr = ?";
-                            $havingParams[] = $filterVal;
-                            break;
-                        case 'notEqual':
-                            $havingParts[] = "$expr != ?";
-                            $havingParams[] = $filterVal;
-                            break;
-                        case 'startsWith':
-                            $havingParts[] = "$expr LIKE ?";
-                            $havingParams[] = "$filterVal%";
-                            break;
-                        case 'endsWith':
-                            $havingParts[] = "$expr LIKE ?";
-                            $havingParams[] = "%$filterVal";
-                            break;
-                    }
-                } else {
-                    // Number filter handling
-                    switch ($condType) {
-                        case 'equals':
-                            $havingParts[] = "$expr = ?";
-                            $havingParams[] = $filterVal;
-                            break;
-                        case 'notEqual':
-                            $havingParts[] = "$expr != ?";
-                            $havingParams[] = $filterVal;
-                            break;
-                        case 'greaterThan':
-                            $havingParts[] = "$expr > ?";
-                            $havingParams[] = $filterVal;
-                            break;
-                        case 'greaterThanOrEqual':
-                            $havingParts[] = "$expr >= ?";
-                            $havingParams[] = $filterVal;
-                            break;
-                        case 'lessThan':
-                            $havingParts[] = "$expr < ?";
-                            $havingParams[] = $filterVal;
-                            break;
-                        case 'lessThanOrEqual':
-                            $havingParts[] = "$expr <= ?";
-                            $havingParams[] = $filterVal;
-                            break;
-                        case 'inRange':
-                            if ($filterTo !== null) {
-                                $havingParts[] = "$expr >= ? AND $expr <= ?";
-                                $havingParams[] = $filterVal;
-                                $havingParams[] = $filterTo;
-                            }
-                            break;
-                        case 'blank':
-                            $havingParts[] = "$expr IS NULL";
-                            break;
-                        case 'notBlank':
-                            $havingParts[] = "$expr IS NOT NULL";
-                            break;
-                    }
-                }
-            }
-
-            if (!empty($havingParts)) {
-                $havingClause = 'HAVING ' . implode(' AND ', $havingParts);
-            }
-
-            // Build ORDER BY clause
-            $sortColumn = match ($sortBy) {
-                'node_id' => 'sd.node_id',
-                'date' => 'sd.recorded_at',
-                'time' => 'sd.recorded_at',
-                'temperature' => 'temperature',
-                'humidity' => 'humidity',
-                'light_intensity' => 'light_intensity',
-                'rssi' => 'rssi',
-                default => 'sd.recorded_at',
-            };
-            $orderByClause = "ORDER BY $sortColumn $sortDir";
-            // Add secondary sort for stability
-            if ($sortBy !== 'date' && $sortBy !== 'time') {
-                $orderByClause .= ', sd.recorded_at DESC';
-            } else {
-                $orderByClause .= ', sd.node_id ASC';
-            }
-
-            // 1. Count total rows (distinct groups, with HAVING filters)
-            $countSql = "SELECT COUNT(*) as total FROM (
-                SELECT sd.node_id,
-                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as temperature,
-                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as humidity,
-                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as light_intensity,
-                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as rssi
-                FROM sensor_data sd WHERE $whereClause GROUP BY sd.node_id, sd.recorded_at
-                $havingClause
-            ) as cnt";
-            $countParams = array_merge($caseParams, $filterParams, $havingParams);
-            $totalResult = DB::selectOne($countSql, $countParams);
-            $total = $totalResult->total ?? 0;
-
-            // 2. Fetch paginated data
-            $dataSql = "
-                SELECT 
-                    sd.node_id,
-                    DATE(sd.recorded_at) as date,
-                    TIME(sd.recorded_at) as time,
-                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as temperature,
-                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as humidity,
-                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as light_intensity,
-                    MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as rssi
-                FROM sensor_data sd
-                WHERE $whereClause
-                GROUP BY sd.node_id, sd.recorded_at
-                $havingClause
-                $orderByClause
-                LIMIT ? OFFSET ?
-            ";
-
-            $dataParams = array_merge($caseParams, $filterParams, $havingParams, [$perPage, $offset]);
+            ], $filterParams, [$perPage, $offset]);
             $sensorData = DB::select($dataSql, $dataParams);
-
             $lastPage = max(1, (int) ceil($total / $perPage));
 
-            return response()->json([
+            return [
                 'success' => true,
                 'data' => $sensorData,
                 'total' => $total,
                 'page' => $page,
                 'per_page' => $perPage,
                 'last_page' => $lastPage,
-            ]);
+            ];
         });
+
+        return response()->json($payload);
     }
 
     public function cameraPerGH(Request $request)
@@ -699,14 +804,12 @@ class ApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Greenhouse not found.'], 404);
         }
 
-        // Optimization: Raw SQL Select
         $cameraData = DB::select("
             SELECT 
                 id, gh_id, image, isFoggy, recorded_at, fog_percentage
             FROM camera_data 
             WHERE gh_id = ? 
             ORDER BY recorded_at DESC
-            LIMIT 100
         ", [$gh_id]);
 
         // Lightweight formatting map
@@ -761,21 +864,28 @@ class ApiController extends Controller
         }
 
         Cache::forget('controlling_data');
+        Cache::forget('monitoring_actuator_status');
 
         return response()->json(['message' => 'Threshold berhasil diperbarui'], 200);
     }
 
     public function getControlling()
     {
-        return Cache::remember('controlling_data', 60, function () {
-            $data = Greenhouse::with(['sensor' => function ($query) {
-                $query->whereNotIn('name', ['RSSI']);
-            }])->get();
-            
-            return response()->json([
-                'success' => true,
-                'data' => $data
-            ]);
+        $data = Cache::remember('controlling_data', 60, function () {
+            return Greenhouse::query()
+                ->select(['id', 'name'])
+                ->with([
+                    'sensor' => function ($query) {
+                        $query->select(['id', 'gh_id', 'name', 'unit', 'threshold_min', 'threshold_max'])
+                            ->where('name', '!=', 'RSSI');
+                    }
+                ])
+                ->get();
         });
+
+        return response()->json([
+            'success' => true,
+            'data' => $data
+        ]);
     }
 }

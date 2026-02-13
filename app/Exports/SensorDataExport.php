@@ -10,13 +10,14 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 
 class SensorDataExport implements FromCollection, WithHeadings
 {
-    protected $gh_id, $start_date, $end_date;
+    protected $gh_id, $start_date, $end_date, $node_id;
 
-    public function __construct($gh_id, $start_date, $end_date)
+    public function __construct($gh_id, $start_date, $end_date, $node_id = null)
     {
         $this->gh_id = $gh_id;
         $this->start_date = $start_date;
         $this->end_date = $end_date;
+        $this->node_id = $node_id;
     }
 
     public function collection()
@@ -53,7 +54,8 @@ class SensorDataExport implements FromCollection, WithHeadings
         $sql = "
             SELECT 
                 sd.node_id,
-                sd.recorded_at,
+                sd.recorded_at as sent_at,
+                MAX(sd.created_at) as received_at,
                 MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as temperature,
                 MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as humidity,
                 MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as light_intensity,
@@ -62,11 +64,21 @@ class SensorDataExport implements FromCollection, WithHeadings
             WHERE sd.sensor_id IN ($placeholders)
             AND sd.recorded_at >= ?
             AND sd.recorded_at < ?
+        ";
+
+        if (!empty($this->node_id)) {
+            $sql .= " AND sd.node_id = ?";
+        }
+
+        $sql .= "
             GROUP BY sd.node_id, sd.recorded_at
             ORDER BY sd.recorded_at DESC
         ";
 
         $params = array_merge($caseParams, $inIds, [$start, $end]);
+        if (!empty($this->node_id)) {
+            $params[] = (int) $this->node_id;
+        }
         $data = \Illuminate\Support\Facades\DB::select($sql, $params);
 
         return collect($data);
@@ -74,6 +86,14 @@ class SensorDataExport implements FromCollection, WithHeadings
 
     public function headings(): array
     {
-        return ["Node ID", "Recorded At", "Temperature", "Humidity", "Light Intensity", "RSSI"];
+        return [
+            "Node ID",
+            "Sent At",
+            "Received At",
+            "Temperature",
+            "Humidity",
+            "Light Intensity",
+            "RSSI",
+        ];
     }
 }

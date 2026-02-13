@@ -33,6 +33,10 @@ const props = defineProps({
             border: "rgba(75, 192, 192, 1)",
         }),
     },
+    datasets: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const canvasRef = ref(null);
@@ -52,39 +56,67 @@ const createChart = async () => {
     }
 
     // Buat chart baru
+    const datasetSource = props.datasets.length
+        ? props.datasets.map((dataset) => ({
+              ...dataset,
+              borderWidth: dataset.borderWidth ?? 2,
+              tension: dataset.tension ?? 0.35,
+              pointRadius: dataset.pointRadius ?? 2.5,
+              pointHoverRadius: dataset.pointHoverRadius ?? 4,
+              fill: dataset.fill ?? false,
+          }))
+        : [
+              {
+                  label: props.sensor_name,
+                  data: [...props.data],
+                  backgroundColor: props.chartColor.background,
+                  borderColor: props.chartColor.border,
+                  borderWidth: 2,
+                  tension: 0.35,
+                  pointRadius: 2.5,
+                  pointHoverRadius: 4,
+              },
+          ];
+
     chartInstance.value = new Chart(ctx, {
         type: "line",
         data: {
             labels: [...props.label],
-            datasets: [
-                {
-                    label: props.sensor_name,
-                    data: [...props.data],
-                    backgroundColor: props.chartColor.background,
-                    borderColor: props.chartColor.border,
-                    borderWidth: 1,
-                },
-            ],
+            datasets: datasetSource,
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { position: "top" },
+                legend: {
+                    position: "top",
+                    display: true,
+                },
                 tooltip: {
                     callbacks: {
-                        label: (tooltipItem) => `Value: ${tooltipItem.raw}`,
+                        label: (tooltipItem) => {
+                            const rawValue = tooltipItem.raw;
+                            const numericValue = Number(rawValue);
+                            const formattedValue =
+                                rawValue === null || rawValue === undefined
+                                    ? "-"
+                                    : Number.isFinite(numericValue)
+                                      ? numericValue.toFixed(2)
+                                      : rawValue;
+
+                            return `${tooltipItem.dataset.label}: ${formattedValue}`;
+                        },
                     },
                 },
             },
             scales: {
-                y: { suggestedMin: 0, suggestedMax: 10 },
+                y: { beginAtZero: false },
             },
         },
     });
 };
 
-watch(() => [props.data, props.label], createChart, { deep: true });
+watch(() => [props.data, props.label, props.datasets], createChart, { deep: true });
 
 onMounted(createChart);
 
