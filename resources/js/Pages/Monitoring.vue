@@ -642,7 +642,7 @@ watch(activeTab, async (newTab) => {
 
                                         <VueDatePicker
                                             class="monitoring-date-picker shrink-0"
-                                            style="width: 112px; min-width: 112px"
+                                            style="width: 128px; min-width: 128px"
                                             v-model="
                                                 getDateTime(sensor.sensor_id)
                                                     .date
@@ -821,6 +821,6 @@ watch(activeTab, async (newTab) => {
     height: 2.5rem;
     padding-right: 0.5rem;
     padding-left: 2rem;
-    font-size: 0.75rem;
+    font-size: 0.875rem;
 }
 </style>

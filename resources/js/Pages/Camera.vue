@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, watch } from "vue";
+import { computed, ref, onMounted } from "vue";
 import { Head, usePage } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import VueDatePicker from "@vuepic/vue-datepicker";
@@ -16,7 +16,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 const toast = useToast();
 const { t, locale } = useLocale();
 
-const { greenhouses, auth, latestData } = usePage().props;
+const { greenhouses, latestData } = usePage().props;
 const daterange = ref();
 const isExporting = ref(false);
 const selectedGreenhouse = ref("");
@@ -132,57 +132,90 @@ const rowClassRules = ref({
 // data
 const rowDataMap = ref({});
 const rowImageMap = ref({});
+const paginationStateMap = ref({});
 
-// page
-const paginationPageSize = ref(5);
-const paginationPageSizeSelector = ref([5, 10, 20]);
+const DEFAULT_CAMERA_PER_PAGE = 20;
 
 const gridApiMap = ref({});
 
-const setText = (selector, text) => {
-    const element = document.querySelector(selector);
-    if (element) {
-        element.innerHTML = text;
+const ensurePaginationState = (gh_id) => {
+    if (!paginationStateMap.value[gh_id]) {
+        paginationStateMap.value[gh_id] = {
+            page: 1,
+            perPage: DEFAULT_CAMERA_PER_PAGE,
+            total: 0,
+            lastPage: 1,
+        };
     }
+
+    return paginationStateMap.value[gh_id];
 };
 
-const onPaginationChanged = (gh_id) => {
-    if (gridApiMap.value[gh_id]) {
-        const totalPages = gridApiMap.value[gh_id].paginationGetTotalPages();
-        const currentPage = gridApiMap.value[gh_id].paginationGetCurrentPage();
-
-        let paginationText =
-            totalPages > 0
-                ? `${currentPage + 1} ${t("common.of")} ${totalPages}`
-                : t("camera.page_no_data");
-        setText("#lbPages" + gh_id, paginationText);
+const getPaginationText = (gh_id) => {
+    const state = ensurePaginationState(gh_id);
+    if (state.total <= 0) {
+        return t("camera.page_no_data");
     }
+
+    return `${state.page} ${t("common.of")} ${state.lastPage}`;
+};
+
+const canPrevPage = (gh_id) => {
+    const state = ensurePaginationState(gh_id);
+    return state.page > 1;
+};
+
+const canNextPage = (gh_id) => {
+    const state = ensurePaginationState(gh_id);
+    return state.page < state.lastPage;
+};
+
+const goToPage = (gh_id, nextPage) => {
+    const state = ensurePaginationState(gh_id);
+    const clampedPage = Math.max(1, Math.min(nextPage, state.lastPage || 1));
+    if (clampedPage === state.page) {
+        return;
+    }
+
+    state.page = clampedPage;
+    fetchData(gh_id);
 };
 
 const onBtFirst = (gh_id) => {
-    gridApiMap.value[gh_id].paginationGoToFirstPage();
+    goToPage(gh_id, 1);
 };
 
 const onBtLast = (gh_id) => {
-    gridApiMap.value[gh_id].paginationGoToLastPage();
+    const state = ensurePaginationState(gh_id);
+    goToPage(gh_id, state.lastPage || 1);
 };
 
 const onBtNext = (gh_id) => {
-    gridApiMap.value[gh_id].paginationGoToNextPage();
+    const state = ensurePaginationState(gh_id);
+    goToPage(gh_id, state.page + 1);
 };
 
 const onBtPrevious = (gh_id) => {
-    gridApiMap.value[gh_id].paginationGoToPreviousPage();
+    const state = ensurePaginationState(gh_id);
+    goToPage(gh_id, state.page - 1);
 };
 
 // fetch data table
 const fetchData = async (gh_id) => {
+    const state = ensurePaginationState(gh_id);
+
     try {
         showLoading(gh_id);
         rowImageLoading.value[gh_id] = true;
 
-        const queryData = { gh_id: gh_id };
-        const url = `/api/camera-per-gh?dict=` + JSON.stringify(queryData);
+        const queryData = {
+            gh_id: gh_id,
+            page: state.page,
+            per_page: state.perPage,
+        };
+        const url =
+            `/api/camera-per-gh?dict=` +
+            encodeURIComponent(JSON.stringify(queryData));
 
         const response = await fetch(url, {
             method: "GET",
@@ -193,7 +226,10 @@ const fetchData = async (gh_id) => {
 
         if (Array.isArray(jsonData.data)) {
             rowDataMap.value[gh_id] = jsonData.data;
-            rowImageMap.value[gh_id] = jsonData.data[0] || [];
+            rowImageMap.value[gh_id] = jsonData.data[0] || null;
+            state.total = Number(jsonData.total || 0);
+            state.lastPage = Number(jsonData.last_page || 1);
+            state.page = Number(jsonData.page || state.page);
         } else {
             toast.error(t("camera.failed_load_data"));
             console.error("Data format error: Expected array", jsonData);
@@ -211,15 +247,8 @@ const fetchData = async (gh_id) => {
 
 onMounted(() => {
     greenhouses.forEach((greenhouse) => {
-        fetchData(greenhouse.id).then(() => {
-            onPaginationChanged(greenhouse.id);
-        });
-    });
-});
-
-watch(locale, () => {
-    greenhouses.forEach((greenhouse) => {
-        onPaginationChanged(greenhouse.id);
+        ensurePaginationState(greenhouse.id);
+        fetchData(greenhouse.id);
     });
 });
 
@@ -493,12 +522,7 @@ const onRowSelected = (event, gh_id) => {
                                             rowDataMap[greenhouse.id] || []
                                         "
                                         :columnDefs="columnDefs"
-                                        :pagination="true"
                                         :domLayout="'autoHeight'"
-                                        :paginationPageSize="paginationPageSize"
-                                        :paginationPageSizeSelector="
-                                            paginationPageSizeSelector
-                                        "
                                         :animateRows="true"
                                         :suppressPaginationPanel="true"
                                         :gridOptions="gridOptions"
@@ -507,12 +531,6 @@ const onRowSelected = (event, gh_id) => {
                                             (event) =>
                                                 onRowSelected(
                                                     event,
-                                                    greenhouse.id
-                                                )
-                                        "
-                                        @pagination-changed="
-                                            () =>
-                                                onPaginationChanged(
                                                     greenhouse.id
                                                 )
                                         "
@@ -531,6 +549,7 @@ const onRowSelected = (event, gh_id) => {
                                     <div class="flex gap-2">
                                         <Button
                                             @click="onBtFirst(greenhouse.id)"
+                                            :disabled="!canPrevPage(greenhouse.id)"
                                         >
                                             <i
                                                 class="fas fa-angle-double-left"
@@ -538,24 +557,25 @@ const onRowSelected = (event, gh_id) => {
                                         </Button>
                                         <Button
                                             @click="onBtPrevious(greenhouse.id)"
+                                            :disabled="!canPrevPage(greenhouse.id)"
                                         >
                                             <i class="fas fa-angle-left"></i>
                                         </Button>
                                     </div>
                                     <div>
-                                        <span :id="'lbPages' + greenhouse.id"
-                                            >- {{ t("common.of") }} -</span
-                                        >
+                                        <span>{{ getPaginationText(greenhouse.id) }}</span>
                                     </div>
                                     <div class="flex gap-2">
                                         <Button
                                             @click="onBtNext(greenhouse.id)"
+                                            :disabled="!canNextPage(greenhouse.id)"
                                         >
                                             <i class="fas fa-angle-right"></i>
                                         </Button>
                                         <Button
                                             @click="onBtLast(greenhouse.id)"
                                             id="btLast"
+                                            :disabled="!canNextPage(greenhouse.id)"
                                         >
                                             <i
                                                 class="fas fa-angle-double-right"

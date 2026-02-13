@@ -604,8 +604,13 @@ class ApiController extends Controller
         }
 
         $page = max(1, (int) ($decodedData['page'] ?? 1));
-        $perPage = max(1, (int) ($decodedData['per_page'] ?? 10));
+        $perPage = min(200, max(1, (int) ($decodedData['per_page'] ?? 10)));
         $offset = ($page - 1) * $perPage;
+        $sortField = strtolower((string) ($decodedData['sort_field'] ?? 'recorded_at'));
+        $sortDirection = strtolower((string) ($decodedData['sort_direction'] ?? 'desc'));
+        if (!in_array($sortDirection, ['asc', 'desc'], true)) {
+            $sortDirection = 'desc';
+        }
 
         $greenhouseExists = Cache::remember("greenhouse_exists_{$gh_id}", 3600, function () use ($gh_id) {
             return DB::selectOne("SELECT 1 FROM greenhouses WHERE id = ?", [$gh_id]) !== null;
@@ -647,25 +652,9 @@ class ApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Both start_date and end_date are required.'], 422);
         }
 
-        $baseSensorId = $sensorIdMap['temperature']
-            ?? $sensorIdMap['humidity']
-            ?? $sensorIdMap['light_intensity']
-            ?? $sensorIdMap['rssi']
-            ?? null;
-
-        if ($baseSensorId === null) {
-            return response()->json([
-                'success' => true,
-                'data' => [],
-                'total' => 0,
-                'page' => $page,
-                'per_page' => $perPage,
-                'last_page' => 1,
-            ]);
-        }
-
-        $whereClause = "base.sensor_id = ?";
-        $filterParams = [$baseSensorId];
+        $inPlaceholders = implode(',', array_fill(0, count($inIds), '?'));
+        $whereClause = "sd.sensor_id IN ($inPlaceholders)";
+        $filterParams = [...$inIds];
 
         if ($startTime && $endTime) {
             try {
@@ -675,30 +664,67 @@ class ApiController extends Controller
                 return response()->json(['success' => false, 'message' => 'Invalid date range.'], 422);
             }
 
-            $whereClause .= " AND base.recorded_at >= ? AND base.recorded_at < ?";
+            $whereClause .= " AND sd.recorded_at >= ? AND sd.recorded_at < ?";
             $filterParams[] = $start;
             $filterParams[] = $end;
         }
 
         if ($nodeId !== null && $nodeId > 0) {
-            $whereClause .= " AND base.node_id = ?";
+            $whereClause .= " AND sd.node_id = ?";
             $filterParams[] = $nodeId;
         }
 
+        $sortFieldMap = [
+            'recorded_at' => 'grouped.recorded_at',
+            'date' => 'grouped.recorded_at',
+            'time' => 'grouped.recorded_at',
+            'node_id' => 'grouped.node_id',
+            'temperature' => 'grouped.temperature',
+            'humidity' => 'grouped.humidity',
+            'light_intensity' => 'grouped.light_intensity',
+            'rssi' => 'grouped.rssi',
+        ];
+        $sortColumn = $sortFieldMap[$sortField] ?? 'grouped.recorded_at';
+        $sortDirectionSql = strtoupper($sortDirection);
+        $orderBySql = $sortColumn . " " . $sortDirectionSql;
+        if ($sortColumn !== 'grouped.recorded_at') {
+            $orderBySql .= ", grouped.recorded_at DESC, grouped.node_id ASC";
+        } else {
+            $orderBySql .= ", grouped.node_id ASC";
+        }
+
+        $aggregationSql = "
+            SELECT
+                sd.node_id,
+                sd.recorded_at,
+                MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as temperature,
+                MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as humidity,
+                MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as light_intensity,
+                MAX(CASE WHEN sd.sensor_id = ? THEN sd.value END) as rssi
+            FROM sensor_data sd
+            WHERE $whereClause
+            GROUP BY sd.node_id, sd.recorded_at
+        ";
+
+        $aggregationParams = array_merge([
+            $sensorIdMap['temperature'],
+            $sensorIdMap['humidity'],
+            $sensorIdMap['light_intensity'],
+            $sensorIdMap['rssi'],
+        ], $filterParams);
+
         $countKeyPayload = [
             'gh_id' => $gh_id,
-            'base_sensor_id' => $baseSensorId,
+            'sensor_ids' => $inIds,
             'start_date' => $startTime,
             'end_date' => $endTime,
             'node_id' => $nodeId,
         ];
         $countCacheKey = 'table_count_' . md5(json_encode($countKeyPayload));
 
-        $total = Cache::remember($countCacheKey, 60, function () use ($whereClause, $filterParams) {
-            $countSql = "SELECT COUNT(*) as total FROM (
-                SELECT 1 FROM sensor_data base WHERE $whereClause GROUP BY base.node_id, base.recorded_at
-            ) as cnt";
-            $totalResult = DB::selectOne($countSql, $filterParams);
+        $total = Cache::remember($countCacheKey, 60, function () use ($aggregationSql, $aggregationParams) {
+            $countSql = "SELECT COUNT(*) as total FROM ($aggregationSql) as cnt";
+            $totalResult = DB::selectOne($countSql, $aggregationParams);
             return (int) ($totalResult->total ?? 0);
         });
 
@@ -706,69 +732,26 @@ class ApiController extends Controller
             'filters' => $countKeyPayload,
             'page' => $page,
             'per_page' => $perPage,
+            'sort_field' => $sortField,
+            'sort_direction' => $sortDirection,
         ]));
 
-        $payload = Cache::remember($pageCacheKey, 60, function () use ($whereClause, $filterParams, $sensorIdMap, $perPage, $offset, $page, $total) {
+        $payload = Cache::remember($pageCacheKey, 60, function () use ($aggregationSql, $aggregationParams, $orderBySql, $perPage, $offset, $page, $total) {
             $dataSql = "
-                SELECT 
-                    page_rows.node_id,
-                    DATE(page_rows.recorded_at) as date,
-                    TIME(page_rows.recorded_at) as time,
-                    (
-                        SELECT sd_t.value
-                        FROM sensor_data sd_t
-                        WHERE sd_t.sensor_id = ?
-                          AND sd_t.node_id = page_rows.node_id
-                          AND sd_t.recorded_at = page_rows.recorded_at
-                        ORDER BY sd_t.id DESC
-                        LIMIT 1
-                    ) as temperature,
-                    (
-                        SELECT sd_h.value
-                        FROM sensor_data sd_h
-                        WHERE sd_h.sensor_id = ?
-                          AND sd_h.node_id = page_rows.node_id
-                          AND sd_h.recorded_at = page_rows.recorded_at
-                        ORDER BY sd_h.id DESC
-                        LIMIT 1
-                    ) as humidity,
-                    (
-                        SELECT sd_l.value
-                        FROM sensor_data sd_l
-                        WHERE sd_l.sensor_id = ?
-                          AND sd_l.node_id = page_rows.node_id
-                          AND sd_l.recorded_at = page_rows.recorded_at
-                        ORDER BY sd_l.id DESC
-                        LIMIT 1
-                    ) as light_intensity,
-                    (
-                        SELECT sd_r.value
-                        FROM sensor_data sd_r
-                        WHERE sd_r.sensor_id = ?
-                          AND sd_r.node_id = page_rows.node_id
-                          AND sd_r.recorded_at = page_rows.recorded_at
-                        ORDER BY sd_r.id DESC
-                        LIMIT 1
-                    ) as rssi
-                FROM (
-                    SELECT
-                        base.node_id,
-                        base.recorded_at
-                    FROM sensor_data base
-                    WHERE $whereClause
-                    GROUP BY base.node_id, base.recorded_at
-                    ORDER BY base.recorded_at DESC, base.node_id ASC
-                    LIMIT ? OFFSET ?
-                ) as page_rows
-                ORDER BY page_rows.recorded_at DESC, page_rows.node_id ASC
+                SELECT
+                    grouped.node_id,
+                    DATE(grouped.recorded_at) as date,
+                    TIME(grouped.recorded_at) as time,
+                    grouped.temperature,
+                    grouped.humidity,
+                    grouped.light_intensity,
+                    grouped.rssi
+                FROM ($aggregationSql) as grouped
+                ORDER BY $orderBySql
+                LIMIT ? OFFSET ?
             ";
 
-            $dataParams = array_merge([
-                $sensorIdMap['temperature'],
-                $sensorIdMap['humidity'],
-                $sensorIdMap['light_intensity'],
-                $sensorIdMap['rssi'],
-            ], $filterParams, [$perPage, $offset]);
+            $dataParams = array_merge($aggregationParams, [$perPage, $offset]);
             $sensorData = DB::select($dataSql, $dataParams);
             $lastPage = max(1, (int) ceil($total / $perPage));
 
@@ -797,34 +780,69 @@ class ApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid JSON format.'], 400);
         }
 
-        $gh_id = $decodedData['gh_id'];
+        $gh_id = (int) ($decodedData['gh_id'] ?? 0);
+        if ($gh_id <= 0) {
+            return response()->json(['success' => false, 'message' => 'Greenhouse ID is required.'], 422);
+        }
 
-        $greenhouseExists = DB::selectOne("SELECT 1 FROM greenhouses WHERE id = ?", [$gh_id]);
+        $page = max(1, (int) ($decodedData['page'] ?? 1));
+        $perPage = min(200, max(1, (int) ($decodedData['per_page'] ?? 20)));
+        $offset = ($page - 1) * $perPage;
+
+        $greenhouseExists = Cache::remember("greenhouse_exists_{$gh_id}", 3600, function () use ($gh_id) {
+            return DB::selectOne("SELECT 1 FROM greenhouses WHERE id = ?", [$gh_id]) !== null;
+        });
         if (!$greenhouseExists) {
             return response()->json(['success' => false, 'message' => 'Greenhouse not found.'], 404);
         }
 
-        $cameraData = DB::select("
-            SELECT 
-                id, gh_id, image, isFoggy, recorded_at, fog_percentage
-            FROM camera_data 
-            WHERE gh_id = ? 
-            ORDER BY recorded_at DESC
-        ", [$gh_id]);
+        $total = Cache::remember("camera_count_{$gh_id}", 20, function () use ($gh_id) {
+            $count = DB::selectOne("
+                SELECT COUNT(*) as total
+                FROM camera_data
+                WHERE gh_id = ?
+            ", [$gh_id]);
 
-        // Lightweight formatting map
-        $formattedData = array_map(function ($camera) {
-            // Note: $camera is stdClass here, not Eloquent model
-            $camera->recorded_at = date('d/m/Y h:i:s', strtotime($camera->recorded_at));
-            $camera->image = url($camera->image);
-            $camera->status = $camera->isFoggy ? 'Berkabut' : 'Tidak Berkabut';
-            return $camera;
-        }, $cameraData);
+            return (int) ($count->total ?? 0);
+        });
 
-        return response()->json([
-            'success' => true,
-            'data' => $formattedData
-        ]);
+        $pageCacheKey = 'camera_page_' . md5(json_encode([
+            'gh_id' => $gh_id,
+            'page' => $page,
+            'per_page' => $perPage,
+        ]));
+
+        $payload = Cache::remember($pageCacheKey, 20, function () use ($gh_id, $perPage, $offset, $page, $total) {
+            $cameraData = DB::select("
+                SELECT
+                    id, gh_id, image, isFoggy, recorded_at, fog_percentage
+                FROM camera_data
+                WHERE gh_id = ?
+                ORDER BY recorded_at DESC
+                LIMIT ? OFFSET ?
+            ", [$gh_id, $perPage, $offset]);
+
+            // Lightweight formatting map
+            $formattedData = array_map(function ($camera) {
+                $camera->recorded_at = date('d/m/Y H:i:s', strtotime($camera->recorded_at));
+                $camera->image = url($camera->image);
+                $camera->status = $camera->isFoggy ? 'Berkabut' : 'Tidak Berkabut';
+                return $camera;
+            }, $cameraData);
+
+            $lastPage = max(1, (int) ceil($total / $perPage));
+
+            return [
+                'success' => true,
+                'data' => $formattedData,
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $perPage,
+                'last_page' => $lastPage,
+            ];
+        });
+
+        return response()->json($payload);
     }
 
     public function updateThreshold(Request  $request)
