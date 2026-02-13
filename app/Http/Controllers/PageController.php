@@ -17,55 +17,50 @@ class PageController extends Controller
 {
     public function monitoring()
     {
-        // 1. Optimized Raw SQL for Latest Data Time (cached)
-        $latestDataTime = Cache::remember('monitoring_latest_time', 10, function () {
-            // Leveraging the C++ MySQL Engine for aggregation and joining
-            $rows = DB::select("
-                SELECT 
-                    s.gh_id,
-                    ss.sensor_id,
-                    MAX(ss.recorded_at) as latest_time
-                FROM sensor_snapshots ss
-                JOIN sensors s ON s.id = ss.sensor_id
-                GROUP BY ss.sensor_id, s.gh_id
-            ");
-
-            // Format dates in PHP (faster than MySQL DATE_FORMAT for large results)
-            foreach ($rows as $item) {
-                $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
-            }
-
-            return $rows;
-        });
-
-        // 2. Optimized Gauge Data Query (Snapshot Read - O(1))
-        // Reads from the pre-computed "Materialized View" table
-        $gaugeData = Cache::remember('gaugeData', 5, function () { // Reduced cache time because query is instant
-            return DB::select("
-                SELECT 
-                    s.gh_id,
-                    ss.sensor_id,
-                    s.name,
-                    s.threshold_min,
-                    s.threshold_max,
-                    s.unit,
-                    AVG(ss.value) as avg_value
-                FROM sensor_snapshots ss
-                JOIN sensors s ON s.id = ss.sensor_id
-                GROUP BY 
-                    ss.sensor_id,
-                    s.gh_id,
-                    s.name,
-                    s.threshold_min,
-                    s.threshold_max,
-                    s.unit
-                ORDER BY s.id
-            ");
-        });
-
         return Inertia::render('Monitoring', [
-            'gaugeData' => $gaugeData,
-            'latestData' => $latestDataTime
+            'gaugeData' => Inertia::defer(function () {
+                return Cache::remember('gaugeData', 5, function () {
+                    return DB::select("
+                        SELECT 
+                            s.gh_id,
+                            ss.sensor_id,
+                            s.name,
+                            s.threshold_min,
+                            s.threshold_max,
+                            s.unit,
+                            AVG(ss.value) as avg_value
+                        FROM sensor_snapshots ss
+                        JOIN sensors s ON s.id = ss.sensor_id
+                        GROUP BY 
+                            ss.sensor_id,
+                            s.gh_id,
+                            s.name,
+                            s.threshold_min,
+                            s.threshold_max,
+                            s.unit
+                        ORDER BY s.id
+                    ");
+                });
+            }, 'monitoring'),
+            'latestData' => Inertia::defer(function () {
+                return Cache::remember('monitoring_latest_time', 10, function () {
+                    $rows = DB::select("
+                        SELECT 
+                            s.gh_id,
+                            ss.sensor_id,
+                            MAX(ss.recorded_at) as latest_time
+                        FROM sensor_snapshots ss
+                        JOIN sensors s ON s.id = ss.sensor_id
+                        GROUP BY ss.sensor_id, s.gh_id
+                    ");
+
+                    foreach ($rows as $item) {
+                        $item->latest_time = Carbon::parse($item->latest_time)->format('d/m/Y H:i:s');
+                    }
+
+                    return $rows;
+                });
+            }, 'monitoring'),
         ]);
     }
 
@@ -92,130 +87,116 @@ class PageController extends Controller
         });
         $ghIds = $greenhouses->pluck('id')->toArray();
 
-        // ===============================
-        // SUPER OPTIMIZED: Single query untuk semua sensor data
-        // Menggunakan approach yang lebih efisien daripada subquery per node
-        // ===============================
-        $sensorDataByGh = Cache::remember('heatmap_sensor_data', 60, function () use ($ghIds) {
-            // Single query: ambil data terbaru per (gh_id, sensor_name, node_id)
-            // Menggunakan sensor_snapshots (materialized view) untuk O(1) per sensor/node
-            $placeholders = implode(',', array_fill(0, count($ghIds), '?'));
-            $allData = DB::select("
-                SELECT 
-                    s.gh_id,
-                    s.name as sensor_name,
-                    ss.node_id,
-                    ss.value
-                FROM sensor_snapshots ss
-                INNER JOIN sensors s ON s.id = ss.sensor_id
-                WHERE s.gh_id IN ($placeholders)
-            ", $ghIds);
-
-            // Transform ke struktur yang dibutuhkan frontend
-            $result = [];
-            foreach ($ghIds as $ghId) {
-                $result[$ghId] = [
-                    'temperature' => [],
-                    'humidity' => [],
-                    'lux' => [],
-                ];
-            }
-
-            foreach ($allData as $row) {
-                $paramKey = match($row->sensor_name) {
-                    'Temperature' => 'temperature',
-                    'Humidity' => 'humidity',
-                    'Light Intensity' => 'lux',
-                    default => null
-                };
-                
-                if ($paramKey && isset($result[$row->gh_id])) {
-                    $result[$row->gh_id][$paramKey][] = [
-                        'node_id' => $row->node_id,
-                        'value' => $row->value,
-                    ];
-                }
-            }
-
-            // Fallback dummy data jika kosong
-            foreach ($ghIds as $ghId) {
-                $baseNodeId = $ghId === 1 ? 1 : 6;
-                if (empty($result[$ghId]['temperature'])) {
-                    $result[$ghId]['temperature'] = $this->getDummyData($baseNodeId, [20, 25, 30, 35, 40]);
-                }
-                if (empty($result[$ghId]['humidity'])) {
-                    $result[$ghId]['humidity'] = $this->getDummyData($baseNodeId, [45, 55, 65, 75, 85]);
-                }
-                if (empty($result[$ghId]['lux'])) {
-                    $result[$ghId]['lux'] = $this->getDummyData($baseNodeId, [10000, 20000, 35000, 50000, 65000]);
-                }
-            }
-
-            return $result;
-        });
-
-        // ===============================
-        // OPTIMIZED: Query semua thresholds sekaligus dengan caching
-        // ===============================
-        $thresholdsByGh = Cache::remember('heatmap_thresholds', 300, function () use ($ghIds) {
-            $result = [];
-            
-            $sensors = Sensor::whereIn('gh_id', $ghIds)
-                ->whereIn('name', ['Temperature', 'Humidity', 'Light Intensity'])
-                ->get(['gh_id', 'name', 'threshold_min', 'threshold_max']);
-            
-            foreach ($ghIds as $ghId) {
-                $ghSensors = $sensors->where('gh_id', $ghId);
-                
-                $temp = $ghSensors->firstWhere('name', 'Temperature');
-                $humidity = $ghSensors->firstWhere('name', 'Humidity');
-                $lux = $ghSensors->firstWhere('name', 'Light Intensity');
-                
-                $result[$ghId] = [
-                    'temperature' => [
-                        'min' => $temp->threshold_min ?? 25,
-                        'max' => $temp->threshold_max ?? 35,
-                    ],
-                    'humidity' => [
-                        'min' => $humidity->threshold_min ?? 50,
-                        'max' => $humidity->threshold_max ?? 80,
-                    ],
-                    'lux' => [
-                        'min' => $lux->threshold_min ?? 20000,
-                        'max' => $lux->threshold_max ?? 50000,
-                    ],
-                ];
-            }
-            
-            return $result;
-        });
-
-        // ===============================
-        // GET LATEST DATA TIME (cached)
-        // ===============================
-        $latestDataTime = Cache::remember('heatmap_latest_time', 30, function () {
-            $rows = DB::select("
-                SELECT 
-                    s.gh_id,
-                    MAX(ss.recorded_at) as latest_time
-                FROM sensor_snapshots ss
-                JOIN sensors s ON s.id = ss.sensor_id
-                GROUP BY s.gh_id
-            ");
-
-            foreach ($rows as $row) {
-                $row->latest_time = Carbon::parse($row->latest_time)->format('d/m/Y H:i:s');
-            }
-
-            return $rows;
-        });
-
         return Inertia::render('Heatmap', [
-            'sensorDataByGh' => $sensorDataByGh,
-            'thresholdsByGh' => $thresholdsByGh,
             'greenhouses' => $greenhouses,
             'activeGhId' => (int) $activeGhId,
-            'latestData' => $latestDataTime,
+            'sensorDataByGh' => Inertia::defer(function () use ($ghIds) {
+                return Cache::remember('heatmap_sensor_data', 60, function () use ($ghIds) {
+                    $placeholders = implode(',', array_fill(0, count($ghIds), '?'));
+                    $allData = DB::select("
+                        SELECT 
+                            s.gh_id,
+                            s.name as sensor_name,
+                            ss.node_id,
+                            ss.value
+                        FROM sensor_snapshots ss
+                        INNER JOIN sensors s ON s.id = ss.sensor_id
+                        WHERE s.gh_id IN ($placeholders)
+                    ", $ghIds);
+
+                    $result = [];
+                    foreach ($ghIds as $ghId) {
+                        $result[$ghId] = [
+                            'temperature' => [],
+                            'humidity' => [],
+                            'lux' => [],
+                        ];
+                    }
+
+                    foreach ($allData as $row) {
+                        $paramKey = match ($row->sensor_name) {
+                            'Temperature' => 'temperature',
+                            'Humidity' => 'humidity',
+                            'Light Intensity' => 'lux',
+                            default => null
+                        };
+
+                        if ($paramKey && isset($result[$row->gh_id])) {
+                            $result[$row->gh_id][$paramKey][] = [
+                                'node_id' => $row->node_id,
+                                'value' => $row->value,
+                            ];
+                        }
+                    }
+
+                    foreach ($ghIds as $ghId) {
+                        $baseNodeId = $ghId === 1 ? 1 : 6;
+                        if (empty($result[$ghId]['temperature'])) {
+                            $result[$ghId]['temperature'] = $this->getDummyData($baseNodeId, [20, 25, 30, 35, 40]);
+                        }
+                        if (empty($result[$ghId]['humidity'])) {
+                            $result[$ghId]['humidity'] = $this->getDummyData($baseNodeId, [45, 55, 65, 75, 85]);
+                        }
+                        if (empty($result[$ghId]['lux'])) {
+                            $result[$ghId]['lux'] = $this->getDummyData($baseNodeId, [10000, 20000, 35000, 50000, 65000]);
+                        }
+                    }
+
+                    return $result;
+                });
+            }, 'heatmap'),
+            'thresholdsByGh' => Inertia::defer(function () use ($ghIds) {
+                return Cache::remember('heatmap_thresholds', 300, function () use ($ghIds) {
+                    $result = [];
+
+                    $sensors = Sensor::whereIn('gh_id', $ghIds)
+                        ->whereIn('name', ['Temperature', 'Humidity', 'Light Intensity'])
+                        ->get(['gh_id', 'name', 'threshold_min', 'threshold_max']);
+
+                    foreach ($ghIds as $ghId) {
+                        $ghSensors = $sensors->where('gh_id', $ghId);
+
+                        $temp = $ghSensors->firstWhere('name', 'Temperature');
+                        $humidity = $ghSensors->firstWhere('name', 'Humidity');
+                        $lux = $ghSensors->firstWhere('name', 'Light Intensity');
+
+                        $result[$ghId] = [
+                            'temperature' => [
+                                'min' => $temp->threshold_min ?? 25,
+                                'max' => $temp->threshold_max ?? 35,
+                            ],
+                            'humidity' => [
+                                'min' => $humidity->threshold_min ?? 50,
+                                'max' => $humidity->threshold_max ?? 80,
+                            ],
+                            'lux' => [
+                                'min' => $lux->threshold_min ?? 20000,
+                                'max' => $lux->threshold_max ?? 50000,
+                            ],
+                        ];
+                    }
+
+                    return $result;
+                });
+            }, 'heatmap'),
+            'latestData' => Inertia::defer(function () {
+                return Cache::remember('heatmap_latest_time', 30, function () {
+                    $rows = DB::select("
+                        SELECT 
+                            s.gh_id,
+                            MAX(ss.recorded_at) as latest_time
+                        FROM sensor_snapshots ss
+                        JOIN sensors s ON s.id = ss.sensor_id
+                        GROUP BY s.gh_id
+                    ");
+
+                    foreach ($rows as $row) {
+                        $row->latest_time = Carbon::parse($row->latest_time)->format('d/m/Y H:i:s');
+                    }
+
+                    return $rows;
+                });
+            }, 'heatmap'),
         ]);
     }
 
@@ -290,22 +271,26 @@ class PageController extends Controller
 
     public function controlling()
     {
-        $controllingData = Cache::remember('controlling_data', 60, function () {
-            return Greenhouse::with(['sensor' => function ($query) {
-                $query->whereNotIn('name', ['RSSI']);
-            }])->get();
-        });
-        
-        $schedules = [];
-        foreach (Greenhouse::all() as $gh) {
-            $schedules[$gh->id] = Cache::remember("schedules_{$gh->id}", 60, function () use ($gh) {
-                return Schedule::where('gh_id', $gh->id)->get();
-            });
-        }
-        
         return Inertia::render('Controlling', [
-            'initialData' => $controllingData,
-            'initialSchedules' => $schedules
+            'initialData' => Inertia::defer(function () {
+                return Cache::remember('controlling_data', 60, function () {
+                    return Greenhouse::with(['sensor' => function ($query) {
+                        $query->whereNotIn('name', ['RSSI']);
+                    }])->get();
+                });
+            }, 'controlling'),
+            'initialSchedules' => Inertia::defer(function () {
+                return Cache::remember('controlling_schedules', 60, function () {
+                    $schedules = [];
+                    $allSchedules = Schedule::orderBy('gh_id')->orderBy('start_time')->get();
+
+                    foreach ($allSchedules as $schedule) {
+                        $schedules[$schedule->gh_id][] = $schedule;
+                    }
+
+                    return $schedules;
+                });
+            }, 'controlling'),
         ]);
     }
 }

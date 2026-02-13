@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, watch } from "vue";
 import { Head, usePage } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import Tabs from "@/Components/Tabs.vue";
@@ -14,9 +14,12 @@ import { useToast } from "vue-toastification";
 
 const toast = useToast();
 
-const { greenhouses, gaugeData, latestData } = usePage().props;
+const page = usePage();
+const greenhouses = computed(() => page.props.greenhouses || []);
+const gaugeData = computed(() => page.props.gaugeData || []);
+const latestData = computed(() => page.props.latestData || []);
 
-const activeTab = ref(greenhouses[0].id);
+const activeTab = ref(greenhouses.value[0]?.id);
 const data = ref({});
 const datetime = ref({});
 const isFetching = ref({});
@@ -80,7 +83,7 @@ const getGaugeScale = (sensorName) => {
 };
 
 const populateData = () => {
-    gaugeData.forEach((gauge) => {
+    gaugeData.value.forEach((gauge) => {
         if (!data.value[gauge.gh_id]) {
             data.value[gauge.gh_id] = { gauge: {}, chart: {} };
         }
@@ -136,7 +139,8 @@ const fetchData = async (sensor_id) => {
                     chartData: jsonData.data.length ? jsonData.data : [],
                     chartLabel: jsonData.label.length ? jsonData.label : [],
                     chartColor: getChartColor(
-                        gaugeData.find((s) => s.sensor_id == sensor_id)?.name
+                        gaugeData.value.find((s) => s.sensor_id == sensor_id)
+                            ?.name
                     ),
                 };
             } else {
@@ -144,7 +148,8 @@ const fetchData = async (sensor_id) => {
                     chartData: [],
                     chartLabel: [],
                     chartColor: getChartColor(
-                        gaugeData.find((s) => s.sensor_id == sensor_id)?.name
+                        gaugeData.value.find((s) => s.sensor_id == sensor_id)
+                            ?.name
                     ),
                 };
             }
@@ -160,18 +165,17 @@ const fetchData = async (sensor_id) => {
     }
 };
 
-onMounted(async () => {
-    populateData();
+const loadChartsForTab = async (ghId) => {
+    if (!ghId) {
+        return;
+    }
 
-    const sensors = gaugeData.filter(
-        (sensor) => sensor.gh_id == activeTab.value
-    );
-
+    const sensors = gaugeData.value.filter((sensor) => sensor.gh_id == ghId);
     await Promise.all(sensors.map((sensor) => fetchData(sensor.sensor_id)));
-});
+};
 
 const selectedGHSensor = computed(() => {
-    const sensors = gaugeData.filter(
+    const sensors = gaugeData.value.filter(
         (sensor) => sensor.gh_id == activeTab.value
     );
     return sensors;
@@ -181,14 +185,35 @@ const filterChart = (sensor_id) => {
     fetchData(sensor_id);
 };
 
+watch(greenhouses, (value) => {
+    if (!activeTab.value && value.length) {
+        activeTab.value = value[0].id;
+    }
+});
+
+watch(
+    gaugeData,
+    async (value) => {
+        if (!value.length || !activeTab.value) {
+            return;
+        }
+
+        populateData();
+        await loadChartsForTab(activeTab.value);
+    },
+    { immediate: true }
+);
+
 watch(activeTab, async (newTab) => {
+    if (!newTab || !gaugeData.value.length) {
+        return;
+    }
+
     if (!data.value[newTab]) {
         data.value[newTab] = { gauge: {}, chart: {} };
     }
 
-    const sensors = gaugeData.filter((sensor) => sensor.gh_id == newTab);
-
-    await Promise.all(sensors.map((sensor) => fetchData(sensor.sensor_id)));
+    await loadChartsForTab(newTab);
 });
 </script>
 

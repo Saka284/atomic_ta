@@ -11,7 +11,12 @@ const classes = computed(() => props.active
 </script>
 
 <template>
-    <Link :href="href" :class="classes">
+    <Link
+        :href="href"
+        :class="classes"
+        :prefetch="['mount', 'hover', 'click']"
+        :cacheFor="60000"
+    >
         <slot />
     </Link>
 </template>
