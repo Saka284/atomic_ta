@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue";
 import Chart from "chart.js/auto";
 
 // Props
@@ -74,37 +74,85 @@ const normalizeDatasetValue = (value) => {
 const normalizeDatasetSeries = (series = []) =>
     series.map((value) => normalizeDatasetValue(value));
 
-const getDatasetSource = () =>
-    props.datasets.length
-        ? props.datasets.map((dataset) => ({
-              ...dataset,
-              data: normalizeDatasetSeries(
-                  Array.isArray(dataset.data) ? dataset.data : []
-              ),
-              borderWidth: dataset.borderWidth ?? 2,
-              tension: dataset.tension ?? 0.35,
-              pointRadius: dataset.pointRadius ?? 2.5,
-              pointHoverRadius: dataset.pointHoverRadius ?? 4,
-              fill: dataset.fill ?? false,
-          }))
-        : [
-              {
-                  label: props.sensor_name,
-                  data: normalizeDatasetSeries(
-                      Array.isArray(props.data) ? [...props.data] : []
-                  ),
-                  backgroundColor: props.chartColor.background,
-                  borderColor: props.chartColor.border,
-                  borderWidth: 2,
-                  tension: 0.35,
-                  pointRadius: 2.5,
-                  pointHoverRadius: 4,
-              },
-          ];
+const normalizeNumberOption = (value, fallback) => {
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue) ? parsedValue : fallback;
+};
+
+const normalizeBooleanOption = (value, fallback = false) => {
+    if (value === undefined || value === null) {
+        return fallback;
+    }
+    return Boolean(value);
+};
+
+const normalizeDataset = (dataset = {}, index = 0) => {
+    const safeDataset =
+        dataset && typeof dataset === "object" ? dataset : {};
+
+    return {
+        label:
+            safeDataset.label !== undefined && safeDataset.label !== null
+                ? String(safeDataset.label)
+                : `${props.sensor_name || "Series"} ${index + 1}`,
+        data: normalizeDatasetSeries(
+            Array.isArray(safeDataset.data) ? safeDataset.data : []
+        ),
+        backgroundColor:
+            safeDataset.backgroundColor ?? props.chartColor.background,
+        borderColor: safeDataset.borderColor ?? props.chartColor.border,
+        borderWidth: normalizeNumberOption(safeDataset.borderWidth, 2),
+        tension: normalizeNumberOption(safeDataset.tension, 0.35),
+        pointRadius: normalizeNumberOption(safeDataset.pointRadius, 2.5),
+        pointHoverRadius: normalizeNumberOption(
+            safeDataset.pointHoverRadius,
+            4
+        ),
+        fill: normalizeBooleanOption(safeDataset.fill, false),
+    };
+};
+
+const buildDefaultDataset = () => [
+    {
+        label: String(props.sensor_name || ""),
+        data: normalizeDatasetSeries(
+            Array.isArray(props.data) ? [...props.data] : []
+        ),
+        backgroundColor: props.chartColor.background,
+        borderColor: props.chartColor.border,
+        borderWidth: 2,
+        tension: 0.35,
+        pointRadius: 2.5,
+        pointHoverRadius: 4,
+        fill: false,
+    },
+];
+
+const getDatasetSource = () => {
+    const datasets = Array.isArray(props.datasets) ? props.datasets : [];
+    if (!datasets.length) {
+        return buildDefaultDataset();
+    }
+
+    return datasets.map((dataset, index) =>
+        normalizeDataset(dataset, index)
+    );
+};
+
+const getChartLabels = () => {
+    if (!Array.isArray(props.label)) {
+        return [];
+    }
+
+    return props.label.map((label) =>
+        label === null || label === undefined ? "" : String(label)
+    );
+};
 
 const getChartOptions = () => ({
     responsive: true,
     maintainAspectRatio: false,
+    events: ["mousemove", "mouseout", "click", "touchstart", "touchmove"],
     plugins: {
         legend: {
             position: "top",
@@ -134,12 +182,10 @@ const getChartOptions = () => ({
     },
 });
 
-const upsertChart = async () => {
-    await nextTick();
-
+const upsertChart = () => {
     if (!canvasRef.value) return;
 
-    const chartLabels = Array.isArray(props.label) ? [...props.label] : [];
+    const chartLabels = getChartLabels();
     const datasetSource = getDatasetSource();
 
     if (chartInstance.value === null) {
@@ -161,16 +207,37 @@ const upsertChart = async () => {
     chart.update("none");
 };
 
+const buildWatchSignature = () =>
+    JSON.stringify({
+        sensor_name: props.sensor_name || "",
+        labels: getChartLabels(),
+        data: Array.isArray(props.data) ? props.data : [],
+        datasets: Array.isArray(props.datasets)
+            ? props.datasets.map((dataset) => ({
+                  label:
+                      dataset?.label !== undefined && dataset?.label !== null
+                          ? String(dataset.label)
+                          : "",
+                  data: Array.isArray(dataset?.data) ? dataset.data : [],
+                  borderColor: dataset?.borderColor ?? null,
+                  backgroundColor: dataset?.backgroundColor ?? null,
+                  borderWidth: dataset?.borderWidth ?? null,
+                  tension: dataset?.tension ?? null,
+                  pointRadius: dataset?.pointRadius ?? null,
+                  pointHoverRadius: dataset?.pointHoverRadius ?? null,
+                  fill: dataset?.fill ?? null,
+              }))
+            : [],
+        chartColor: {
+            background: props.chartColor?.background ?? "",
+            border: props.chartColor?.border ?? "",
+        },
+    });
+
 watch(
-    () => [
-        props.data,
-        props.label,
-        props.datasets,
-        props.sensor_name,
-        props.chartColor,
-    ],
+    buildWatchSignature,
     upsertChart,
-    { deep: true }
+    { flush: "post" }
 );
 
 onMounted(upsertChart);
