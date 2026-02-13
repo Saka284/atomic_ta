@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onBeforeUnmount } from "vue";
 import { Head, usePage } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import Tabs from "@/Components/Tabs.vue";
@@ -30,6 +30,23 @@ const CHART_CACHE_TTL_MS = 60000;
 const CHART_CACHE_LIMIT = 200;
 const chartMode = ref({});
 const chartRange = ref({});
+const chartAbortControllers = new Map();
+const chartRequestTokens = new Map();
+
+const abortChartRequest = (sensorId) => {
+    const controller = chartAbortControllers.get(sensorId);
+    if (!controller) {
+        return;
+    }
+
+    controller.abort();
+    chartAbortControllers.delete(sensorId);
+};
+
+const abortAllChartRequests = () => {
+    chartAbortControllers.forEach((controller) => controller.abort());
+    chartAbortControllers.clear();
+};
 
 const chartRangeOptions = computed(() => [
     { value: "custom", label: t("monitoring.range_custom") },
@@ -535,6 +552,12 @@ const relocalizeLoadedCharts = () => {
 };
 
 const fetchData = async (sensor_id) => {
+    const requestToken = (chartRequestTokens.get(sensor_id) || 0) + 1;
+    chartRequestTokens.set(sensor_id, requestToken);
+    abortChartRequest(sensor_id);
+
+    let controller = null;
+
     try {
         isFetching.value[sensor_id] = true;
 
@@ -543,9 +566,15 @@ const fetchData = async (sensor_id) => {
 
         const cachedPayload = getChartCachedPayload(cacheKey);
         if (cachedPayload) {
+            if (chartRequestTokens.get(sensor_id) !== requestToken) {
+                return;
+            }
             applyChartPayload(sensor_id, cachedPayload);
             return;
         }
+
+        controller = new AbortController();
+        chartAbortControllers.set(sensor_id, controller);
 
         const url =
             `/api/chart-data?dict=` +
@@ -554,6 +583,7 @@ const fetchData = async (sensor_id) => {
         const response = await fetch(url, {
             method: "GET",
             headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
         });
 
         if (!response.ok) {
@@ -561,6 +591,10 @@ const fetchData = async (sensor_id) => {
         }
 
         const jsonData = await response.json();
+        if (chartRequestTokens.get(sensor_id) !== requestToken) {
+            return;
+        }
+
         if (jsonData?.success === false) {
             throw new Error(jsonData?.message || t("monitoring.failed_load_chart"));
         }
@@ -569,10 +603,27 @@ const fetchData = async (sensor_id) => {
         setChartCachedPayload(cacheKey, normalizedPayload);
         applyChartPayload(sensor_id, normalizedPayload);
     } catch (error) {
+        if (error?.name === "AbortError") {
+            return;
+        }
+
+        if (chartRequestTokens.get(sensor_id) !== requestToken) {
+            return;
+        }
+
         toast.error(error?.message || t("monitoring.failed_load_data"));
         console.error("Fetch error:", error);
     } finally {
-        isFetching.value[sensor_id] = false;
+        if (
+            controller &&
+            chartAbortControllers.get(sensor_id) === controller
+        ) {
+            chartAbortControllers.delete(sensor_id);
+        }
+
+        if (chartRequestTokens.get(sensor_id) === requestToken) {
+            isFetching.value[sensor_id] = false;
+        }
     }
 };
 
@@ -620,6 +671,8 @@ watch(activeTab, async (newTab) => {
         return;
     }
 
+    abortAllChartRequests();
+
     if (!data.value[newTab]) {
         data.value[newTab] = { gauge: {}, chart: {} };
     }
@@ -629,6 +682,10 @@ watch(activeTab, async (newTab) => {
 
 watch(locale, () => {
     relocalizeLoadedCharts();
+});
+
+onBeforeUnmount(() => {
+    abortAllChartRequests();
 });
 </script>
 

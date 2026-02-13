@@ -75,6 +75,9 @@ const mapOpacity = ref(1);                         // Opacity untuk fade transit
 let resizeDebounceTimer = null;                    // Debounce timer untuk ResizeObserver
 let isTransitioning = false;                       // Flag: sedang transisi switch GH
 let autoRefreshInterval = null;                   // Interval untuk auto-refresh
+let resizeObserver = null;                         // Resize observer cleanup ref
+let pendingClipFrame = null;                       // RAF id untuk clip heatmap
+let pendingHeatmapFrame = null;                    // RAF id untuk update heatmap
 
 // ===============================
 // AUTO-REFRESH INTERVAL 
@@ -185,6 +188,12 @@ const currentSensorData = computed(() => {
   if (activeParameter.value === 'humidity') return ghData.humidity || [];
   return ghData.lux || [];
 });
+
+const currentSensorDataSignature = computed(() =>
+  (currentSensorData.value || [])
+    .map((sensor) => `${sensor.node_id}:${sensor.value}:${sensor.recorded_at || ""}`)
+    .join("|")
+);
 
 
 
@@ -565,12 +574,17 @@ const CanvasHeatmapLayer = L.Layer.extend({
     
     if (sensors.length === 0) return;
     
-    // IDW power parameter - higher = sharper transitions near sensors
-    const IDW_POWER = 2;
-    
     // Render each pixel using IDW (Inverse Distance Weighting)
     // SEMUA sensor mempengaruhi SEMUA pixel, dengan bobot berdasarkan jarak
     const RESOLUTION = 2; // Skip pixels for performance (1 = full, 2 = half, etc)
+    const epsilon = 1;
+    const radiusPx = Math.max(
+      1,
+      Math.abs(
+        this._map.latLngToContainerPoint([0, this.options.radius]).x -
+        this._map.latLngToContainerPoint([0, 0]).x
+      )
+    );
     
     for (let py = 0; py < imgHeight; py += RESOLUTION) {
       for (let px = 0; px < imgWidth; px += RESOLUTION) {
@@ -587,10 +601,10 @@ const CanvasHeatmapLayer = L.Layer.extend({
           // Track jarak terdekat untuk alpha calculation
           if (dist < minDist) minDist = dist;
           
-          // IDW: weight = 1 / distance^power
+          // IDW: weight = 1 / distance²
           // Tambah epsilon untuk avoid division by zero saat tepat di sensor
-          const epsilon = 1;
-          const weight = 1 / Math.pow(dist + epsilon, IDW_POWER);
+          const denominator = (dist + epsilon) * (dist + epsilon);
+          const weight = 1 / denominator;
           
           weightSum += weight;
           valueSum += weight * sensor.intensity;
@@ -602,11 +616,6 @@ const CanvasHeatmapLayer = L.Layer.extend({
         
         // Alpha: fade di edges berdasarkan jarak ke sensor terdekat
         // radiusPx berfungsi sebagai "max influence distance" untuk alpha
-        const radiusPx = Math.abs(
-          this._map.latLngToContainerPoint([0, this.options.radius]).x -
-          this._map.latLngToContainerPoint([0, 0]).x
-        );
-        
         // Alpha: 1.0 di dekat sensor, fade ke 0 di luar radius
         let alpha;
         if (minDist < radiusPx * 0.5) {
@@ -759,30 +768,57 @@ function initMap() {
   ]);
 
   // Tambahkan event untuk clip heatmap setelah render
-  map.on('zoomend moveend zoom move', () => {
-    requestAnimationFrame(clipHeatmapToBounds);
-  });
+  map.on('zoom move', handleMapViewportChange);
   
-  updateHeatmap();
+  scheduleHeatmapUpdate();
+}
+
+function handleMapViewportChange() {
+  scheduleClipHeatmap();
+}
+
+function scheduleClipHeatmap() {
+  if (pendingClipFrame !== null) {
+    cancelAnimationFrame(pendingClipFrame);
+  }
+
+  pendingClipFrame = requestAnimationFrame(() => {
+    pendingClipFrame = null;
+    clipHeatmapToBounds();
+  });
+}
+
+function scheduleHeatmapUpdate() {
+  if (pendingHeatmapFrame !== null) {
+    cancelAnimationFrame(pendingHeatmapFrame);
+  }
+
+  pendingHeatmapFrame = requestAnimationFrame(() => {
+    pendingHeatmapFrame = null;
+    updateHeatmap();
+  });
 }
 
 function clipHeatmapToBounds() {
   if (!map) return;
+
+  const heatCanvas = customHeatLayer?._canvas;
+  if (!heatCanvas) {
+    return;
+  }
   
   // Dapatkan posisi pixel dari bounds gambar
   const topLeft = map.latLngToContainerPoint([IMAGE_HEIGHT.value, 0]);
   const bottomRight = map.latLngToContainerPoint([0, IMAGE_WIDTH.value]);
-  
-  // Cari semua canvas heatmap (bisa lebih dari satu)
-  const heatCanvases = document.querySelectorAll('.leaflet-heatmap-layer, .leaflet-pane canvas');
-  heatCanvases.forEach(canvas => {
-    const left = Math.max(0, topLeft.x);
-    const top = Math.max(0, topLeft.y);
-    const right = bottomRight.x;
-    const bottom = bottomRight.y;
-    
-    canvas.style.clipPath = `polygon(${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px)`;
-  });
+
+  const left = Math.max(0, topLeft.x);
+  const top = Math.max(0, topLeft.y);
+  const right = bottomRight.x;
+  const bottom = bottomRight.y;
+  const clipPath = `polygon(${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px)`;
+
+  heatCanvas.style.clipPath = clipPath;
+  heatCanvas.style.webkitClipPath = clipPath;
 }
 
 /**
@@ -798,11 +834,24 @@ function updateHeatmap() {
   const sensorData = currentSensorData.value.filter(
     (sensor) => nodeLocations.value[sensor.node_id]
   );
-  
-  if (sensorData.length > 0) {
-    drawCustomHeatmap(sensorData);  // Render heatmap canvas
-    drawMarkers();                   // Render marker circles
+
+  if (sensorData.length <= 0) {
+    if (customHeatLayer) {
+      map.removeLayer(customHeatLayer);
+      customHeatLayer = null;
+    }
+
+    if (markersLayer) {
+      map.removeLayer(markersLayer);
+      markersLayer = null;
+    }
+
+    return;
   }
+
+  drawCustomHeatmap(sensorData);  // Render heatmap canvas
+  drawMarkers();                   // Render marker circles
+  scheduleClipHeatmap();
 }
 
 // ===============================
@@ -849,7 +898,7 @@ onMounted(() => {
   // ResizeObserver untuk recalculate saat resize window
   // DEBOUNCED: Hanya fire setelah 350ms stabil (setelah CSS transition selesai)
   if (window.ResizeObserver && mapContainer.value) {
-    const resizeObserver = new ResizeObserver(() => {
+    resizeObserver = new ResizeObserver(() => {
       // Skip jika sedang transisi GH switch (ditangani oleh watcher)
       if (isTransitioning) return;
       
@@ -863,6 +912,7 @@ onMounted(() => {
             const zoomSettings = getOptimalZoomSettings();
             map.setMinZoom(zoomSettings.minZoom);
             map.fitBounds(bounds, { padding: zoomSettings.padding, maxZoom: zoomSettings.fitMaxZoom });
+            scheduleClipHeatmap();
           });
         }
       }, 350);
@@ -874,6 +924,36 @@ onMounted(() => {
 // Saat komponen di-unmount, hentikan auto-refresh
 onUnmounted(() => {
   stopAutoRefresh();
+
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+
+  if (resizeDebounceTimer) {
+    clearTimeout(resizeDebounceTimer);
+    resizeDebounceTimer = null;
+  }
+
+  if (pendingClipFrame !== null) {
+    cancelAnimationFrame(pendingClipFrame);
+    pendingClipFrame = null;
+  }
+
+  if (pendingHeatmapFrame !== null) {
+    cancelAnimationFrame(pendingHeatmapFrame);
+    pendingHeatmapFrame = null;
+  }
+
+  if (map) {
+    map.off('zoom move', handleMapViewportChange);
+    map.remove();
+    map = null;
+  }
+
+  markersLayer = null;
+  customHeatLayer = null;
+  imageOverlay = null;
 });
 
 // ===============================
@@ -926,7 +1006,7 @@ watch(activeGH, (newGhId) => {
         map.removeLayer(customHeatLayer);
         customHeatLayer = null;
       }
-      updateHeatmap();
+      scheduleHeatmapUpdate();
       
       // Step 4: Fade in map content
       requestAnimationFrame(() => {
@@ -940,17 +1020,23 @@ watch(activeGH, (newGhId) => {
 // Watch 2: Saat user switch parameter (Temperature/Humidity/Light Intensity)
 // Tidak perlu request server, cukup update heatmap dengan data yang sudah ada
 watch(activeParameter, () => {
-  updateHeatmap();
+  scheduleHeatmapUpdate();
 });
 
 // Watch 3: Saat data dari server berubah (auto-refresh)
-// OPTIMIZED: Watch sensorDataByGh karena struktur data baru
+// OPTIMIZED: Watch signature data aktif agar tidak deep-watch seluruh payload.
 watch(
-  () => props.sensorDataByGh,
+  currentSensorDataSignature,
   () => {
-    updateHeatmap();
-  },
-  { deep: true }
+    scheduleHeatmapUpdate();
+  }
+);
+
+watch(
+  () => `${currentThresholds.value.min}|${currentThresholds.value.max}`,
+  () => {
+    scheduleHeatmapUpdate();
+  }
 );
 </script>
 

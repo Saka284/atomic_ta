@@ -62,35 +62,25 @@ const formatSensorValue = (value) => {
     return numericValue.toFixed(getDecimalPlaces());
 };
 
-const createChart = async () => {
-    await nextTick(); // Pastikan DOM sudah ada
-
-    if (!canvasRef.value) return;
-
-    const ctx = canvasRef.value.getContext("2d");
-
-    // Hapus chart lama jika ada
-    if (chartInstance.value !== null) {
-        chartInstance.value.destroy();
-        chartInstance.value = null;
+const normalizeDatasetValue = (value) => {
+    if (value === null || value === undefined) {
+        return null;
     }
 
-    // Buat chart baru
-    const datasetSource = props.datasets.length
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : value;
+};
+
+const normalizeDatasetSeries = (series = []) =>
+    series.map((value) => normalizeDatasetValue(value));
+
+const getDatasetSource = () =>
+    props.datasets.length
         ? props.datasets.map((dataset) => ({
               ...dataset,
-              data: Array.isArray(dataset.data)
-                  ? dataset.data.map((value) => {
-                        if (value === null || value === undefined) {
-                            return null;
-                        }
-
-                        const numericValue = Number(value);
-                        return Number.isFinite(numericValue)
-                            ? numericValue
-                            : value;
-                    })
-                  : [],
+              data: normalizeDatasetSeries(
+                  Array.isArray(dataset.data) ? dataset.data : []
+              ),
               borderWidth: dataset.borderWidth ?? 2,
               tension: dataset.tension ?? 0.35,
               pointRadius: dataset.pointRadius ?? 2.5,
@@ -100,16 +90,9 @@ const createChart = async () => {
         : [
               {
                   label: props.sensor_name,
-                  data: [...props.data].map((value) => {
-                      if (value === null || value === undefined) {
-                          return null;
-                      }
-
-                      const numericValue = Number(value);
-                      return Number.isFinite(numericValue)
-                          ? numericValue
-                          : value;
-                  }),
+                  data: normalizeDatasetSeries(
+                      Array.isArray(props.data) ? [...props.data] : []
+                  ),
                   backgroundColor: props.chartColor.background,
                   borderColor: props.chartColor.border,
                   borderWidth: 2,
@@ -119,53 +102,79 @@ const createChart = async () => {
               },
           ];
 
-    chartInstance.value = new Chart(ctx, {
-        type: "line",
-        data: {
-            labels: [...props.label],
-            datasets: datasetSource,
+const getChartOptions = () => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: {
+            position: "top",
+            display: true,
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: "top",
-                    display: true,
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (tooltipItem) => {
-                            const rawValue = tooltipItem.raw;
-                            const formattedValue =
-                                rawValue === null || rawValue === undefined
-                                    ? "-"
-                                    : formatSensorValue(rawValue);
+        tooltip: {
+            callbacks: {
+                label: (tooltipItem) => {
+                    const rawValue = tooltipItem.raw;
+                    const formattedValue =
+                        rawValue === null || rawValue === undefined
+                            ? "-"
+                            : formatSensorValue(rawValue);
 
-                            return `${tooltipItem.dataset.label}: ${formattedValue}`;
-                        },
-                    },
-                },
-            },
-            scales: {
-                y: {
-                    beginAtZero: false,
-                    ticks: {
-                        callback: (value) => formatSensorValue(value),
-                    },
+                    return `${tooltipItem.dataset.label}: ${formattedValue}`;
                 },
             },
         },
-    });
+    },
+    scales: {
+        y: {
+            beginAtZero: false,
+            ticks: {
+                callback: (value) => formatSensorValue(value),
+            },
+        },
+    },
+});
+
+const upsertChart = async () => {
+    await nextTick();
+
+    if (!canvasRef.value) return;
+
+    const chartLabels = Array.isArray(props.label) ? [...props.label] : [];
+    const datasetSource = getDatasetSource();
+
+    if (chartInstance.value === null) {
+        const ctx = canvasRef.value.getContext("2d");
+        chartInstance.value = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: chartLabels,
+                datasets: datasetSource,
+            },
+            options: getChartOptions(),
+        });
+        return;
+    }
+
+    const chart = chartInstance.value;
+    chart.data.labels = chartLabels;
+    chart.data.datasets = datasetSource;
+    chart.options = getChartOptions();
+    chart.update("none");
 };
 
 watch(
-    () => [props.data, props.label, props.datasets, props.sensor_name],
-    createChart,
+    () => [
+        props.data,
+        props.label,
+        props.datasets,
+        props.sensor_name,
+        props.chartColor,
+    ],
+    upsertChart,
     { deep: true }
 );
 
-onMounted(createChart);
+onMounted(upsertChart);
 
 onBeforeUnmount(() => {
     if (chartInstance.value !== null) {

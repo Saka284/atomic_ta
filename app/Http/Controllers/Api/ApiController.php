@@ -378,12 +378,15 @@ class ApiController extends Controller
         $date_end = !empty($decodedData['date_end']) ? $decodedData['date_end'] : null;
         $time = !empty($decodedData['time']) ? $decodedData['time'] : null;
 
-        $sensorExists = DB::selectOne("SELECT gh_id FROM sensors WHERE id = ?", [$sensor_id]);
-        if (!$sensorExists) {
+        $sensorGhId = Cache::remember("sensor_gh_{$sensor_id}", 3600, function () use ($sensor_id) {
+            return DB::table('sensors')->where('id', $sensor_id)->value('gh_id');
+        });
+
+        if (!$sensorGhId) {
             return response()->json(['success' => false, 'message' => 'Sensor not found.'], 404);
         }
 
-        $gh_id = (int) ($decodedData['gh_id'] ?? $sensorExists->gh_id);
+        $gh_id = (int) ($decodedData['gh_id'] ?? $sensorGhId);
 
         // Cache Key based on request params
         $cacheKey = 'chart_' . md5($dict);
@@ -566,28 +569,37 @@ class ApiController extends Controller
             return [6, 7, 8, 9, 10];
         }
 
-        $rows = DB::select("
-            SELECT DISTINCT node_id
-            FROM sensor_data
-            WHERE sensor_id = ?
-              AND recorded_at >= ?
-              AND recorded_at < ?
-            ORDER BY node_id ASC
-        ", [$sensorId, $start, $end]);
+        $cacheKey = 'chart_node_ids_' . md5(json_encode([
+            'gh_id' => $ghId,
+            'sensor_id' => $sensorId,
+            'start' => $start,
+            'end' => $end,
+        ]));
 
-        $nodeIds = array_map(fn($row) => (int) $row->node_id, $rows);
-        if (!empty($nodeIds)) {
-            return $nodeIds;
-        }
+        return Cache::remember($cacheKey, 120, function () use ($sensorId, $start, $end) {
+            $rows = DB::select("
+                SELECT DISTINCT node_id
+                FROM sensor_data
+                WHERE sensor_id = ?
+                  AND recorded_at >= ?
+                  AND recorded_at < ?
+                ORDER BY node_id ASC
+            ", [$sensorId, $start, $end]);
 
-        $fallbackRows = DB::select("
-            SELECT DISTINCT node_id
-            FROM sensor_data
-            WHERE sensor_id = ?
-            ORDER BY node_id ASC
-        ", [$sensorId]);
+            $nodeIds = array_map(fn($row) => (int) $row->node_id, $rows);
+            if (!empty($nodeIds)) {
+                return $nodeIds;
+            }
 
-        return array_map(fn($row) => (int) $row->node_id, $fallbackRows);
+            $fallbackRows = DB::select("
+                SELECT DISTINCT node_id
+                FROM sensor_data
+                WHERE sensor_id = ?
+                ORDER BY node_id ASC
+            ", [$sensorId]);
+
+            return array_map(fn($row) => (int) $row->node_id, $fallbackRows);
+        });
     }
 
 
@@ -818,20 +830,34 @@ class ApiController extends Controller
         ]));
 
         $payload = Cache::remember($pageCacheKey, 20, function () use ($gh_id, $perPage, $offset, $page, $total) {
-            $cameraData = DB::select("
-                SELECT
-                    id,
-                    gh_id,
-                    image,
-                    isFoggy,
-                    recorded_at,
-                    DATE_FORMAT(recorded_at, '%d/%m/%Y %H:%i:%s') as recorded_at_24h,
-                    fog_percentage
+            // Two-step pagination: scan index first, then fetch full row payload.
+            $pageIds = DB::select("
+                SELECT id
                 FROM camera_data
                 WHERE gh_id = ?
-                ORDER BY camera_data.recorded_at DESC
+                ORDER BY recorded_at DESC, id DESC
                 LIMIT ? OFFSET ?
             ", [$gh_id, $perPage, $offset]);
+
+            $cameraData = [];
+            if (!empty($pageIds)) {
+                $idList = array_values(array_map(fn($row) => (int) $row->id, $pageIds));
+                $placeholders = implode(',', array_fill(0, count($idList), '?'));
+
+                $cameraData = DB::select("
+                    SELECT
+                        id,
+                        gh_id,
+                        image,
+                        isFoggy,
+                        recorded_at,
+                        DATE_FORMAT(recorded_at, '%d/%m/%Y %H:%i:%s') as recorded_at_24h,
+                        fog_percentage
+                    FROM camera_data
+                    WHERE id IN ($placeholders)
+                    ORDER BY recorded_at DESC, id DESC
+                ", $idList);
+            }
 
             // Lightweight formatting map
             $formattedData = array_map(function ($camera) {

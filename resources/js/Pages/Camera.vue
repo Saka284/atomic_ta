@@ -212,9 +212,27 @@ const rowImageMap = ref({});
 const paginationStateMap = ref({});
 const rowImageLoadingTimers = ref({});
 const isComponentAlive = ref(true);
+const loadedGreenhouseMap = ref({});
+const cameraRequestTokens = new Map();
+const cameraFetchControllers = new Map();
 
 const DEFAULT_CAMERA_PER_PAGE = 20;
 const CAMERA_PER_PAGE_OPTIONS = [5, 10, 20, 50, 100];
+
+const abortCameraFetch = (gh_id) => {
+    const controller = cameraFetchControllers.get(gh_id);
+    if (!controller) {
+        return;
+    }
+
+    controller.abort();
+    cameraFetchControllers.delete(gh_id);
+};
+
+const abortAllCameraFetches = () => {
+    cameraFetchControllers.forEach((controller) => controller.abort());
+    cameraFetchControllers.clear();
+};
 
 const ensurePaginationState = (gh_id) => {
     if (!paginationStateMap.value[gh_id]) {
@@ -270,7 +288,7 @@ const goToPage = (gh_id, nextPage) => {
     }
 
     state.page = clampedPage;
-    fetchData(gh_id);
+    fetchData(gh_id, { force: true });
 };
 
 const onBtFirst = (gh_id) => {
@@ -300,18 +318,36 @@ const onPerPageChange = (gh_id, value) => {
             ? parsedPerPage
             : DEFAULT_CAMERA_PER_PAGE;
     state.page = 1;
-    fetchData(gh_id);
+    fetchData(gh_id, { force: true });
 };
 
 // fetch data table
-const fetchData = async (gh_id) => {
-    const state = ensurePaginationState(gh_id);
+const fetchData = async (gh_id, { force = false } = {}) => {
+    const parsedGhId = Number(gh_id);
+    if (!Number.isFinite(parsedGhId) || parsedGhId <= 0) {
+        return;
+    }
+
+    if (
+        !force &&
+        loadedGreenhouseMap.value[parsedGhId] &&
+        Array.isArray(rowDataMap.value[parsedGhId])
+    ) {
+        return;
+    }
+
+    const state = ensurePaginationState(parsedGhId);
+    const requestToken = (cameraRequestTokens.get(parsedGhId) || 0) + 1;
+    cameraRequestTokens.set(parsedGhId, requestToken);
+    abortCameraFetch(parsedGhId);
+
+    let controller = null;
 
     try {
-        rowTableLoading.value[gh_id] = true;
+        rowTableLoading.value[parsedGhId] = true;
 
         const queryData = {
-            gh_id: gh_id,
+            gh_id: parsedGhId,
             page: state.page,
             per_page: state.perPage,
         };
@@ -319,50 +355,75 @@ const fetchData = async (gh_id) => {
             `/api/camera-per-gh?dict=` +
             encodeURIComponent(JSON.stringify(queryData));
 
+        controller = new AbortController();
+        cameraFetchControllers.set(parsedGhId, controller);
+
         const response = await fetch(url, {
             method: "GET",
             headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
         });
 
         const jsonData = await response.json();
 
-        if (!isComponentAlive.value) {
+        if (
+            !isComponentAlive.value ||
+            cameraRequestTokens.get(parsedGhId) !== requestToken
+        ) {
             return;
         }
 
         if (Array.isArray(jsonData.data)) {
             const nextPreview = jsonData.data[0] || null;
-            if (rowImageMap.value[gh_id]?.image !== nextPreview?.image) {
-                rowImageLoading.value[gh_id] = Boolean(nextPreview);
+            if (rowImageMap.value[parsedGhId]?.image !== nextPreview?.image) {
+                rowImageLoading.value[parsedGhId] = Boolean(nextPreview);
             }
 
-            rowDataMap.value[gh_id] = jsonData.data;
-            rowImageMap.value[gh_id] = nextPreview;
+            rowDataMap.value[parsedGhId] = jsonData.data;
+            rowImageMap.value[parsedGhId] = nextPreview;
             state.total = Number(jsonData.total || 0);
             state.lastPage = Number(jsonData.last_page || 1);
             state.page = Number(jsonData.page || state.page);
+            loadedGreenhouseMap.value[parsedGhId] = true;
         } else {
             toast.error(t("camera.failed_load_data"));
             console.error("Data format error: Expected array", jsonData);
         }
-
-        rowTableLoading.value[gh_id] = false;
     } catch (error) {
-        if (!isComponentAlive.value) {
+        if (!isComponentAlive.value || error?.name === "AbortError") {
             return;
         }
 
         toast.error(t("camera.failed_load_data"));
         console.error("Fetch error:", error);
-        rowImageLoading.value[gh_id] = false;
-        rowTableLoading.value[gh_id] = false;
+        rowImageLoading.value[parsedGhId] = false;
+    } finally {
+        if (
+            controller &&
+            cameraFetchControllers.get(parsedGhId) === controller
+        ) {
+            cameraFetchControllers.delete(parsedGhId);
+        }
+
+        if (cameraRequestTokens.get(parsedGhId) === requestToken) {
+            rowTableLoading.value[parsedGhId] = false;
+        }
     }
 };
 
+const loadGreenhouseDataIfNeeded = (gh_id, { force = false } = {}) => {
+    const parsedGhId = Number(gh_id);
+    if (!Number.isFinite(parsedGhId) || parsedGhId <= 0) {
+        return;
+    }
+
+    ensurePaginationState(parsedGhId);
+    fetchData(parsedGhId, { force });
+};
+
 onMounted(() => {
-    greenhouses.forEach((greenhouse) => {
-        ensurePaginationState(greenhouse.id);
-        fetchData(greenhouse.id);
+    (greenhouses || []).forEach((greenhouse) => {
+        loadGreenhouseDataIfNeeded(greenhouse.id);
     });
 });
 
@@ -449,6 +510,7 @@ const onRowSelected = (event, gh_id) => {
 
 onUnmounted(() => {
     isComponentAlive.value = false;
+    abortAllCameraFetches();
     Object.values(rowImageLoadingTimers.value).forEach((timerId) => {
         clearTimeout(timerId);
     });
@@ -586,17 +648,29 @@ onUnmounted(() => {
                         :key="greenhouse.id"
                         class="bg-white overflow-hidden shadow-sm rounded-lg p-4 w-full"
                     >
-                        <div class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4">
+                        <div
+                            class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4"
+                        >
                             <p class="text-lg font-semibold leading-tight">
                                 {{ t("monitoring.camera") }} {{ greenhouse.name }}
                             </p>
-                            
+
                             <div class="flex flex-col items-end">
-                                
-                                <div v-if="rowImageMap[greenhouse.id]?.fog_percentage" 
-                                    class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm">
+                                <div
+                                    v-if="
+                                        rowImageMap[greenhouse.id]
+                                            ?.fog_percentage !== null &&
+                                        rowImageMap[greenhouse.id]
+                                            ?.fog_percentage !== undefined
+                                    "
+                                    class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm"
+                                >
                                     <span class="text-xs font-bold">
-                                        {{ t("camera.accuracy") }}: {{ rowImageMap[greenhouse.id]?.fog_percentage }}%
+                                        {{ t("camera.accuracy") }}:
+                                        {{
+                                            rowImageMap[greenhouse.id]
+                                                ?.fog_percentage
+                                        }}%
                                     </span>
                                 </div>
                             </div>
@@ -617,8 +691,8 @@ onUnmounted(() => {
                                 <img
                                     v-else
                                     :src="
-                                        rowImageMap[greenhouse.id]?.image ||
-                                        '/images/no-image.svg'
+                                        rowImageMap[greenhouse.id]
+                                            ?.image || '/images/no-image.svg'
                                     "
                                     :alt="t('title.camera')"
                                     class="w-full h-full object-contain"
@@ -642,11 +716,18 @@ onUnmounted(() => {
                                         v-if="rowTableLoading[greenhouse.id]"
                                         class="absolute inset-0 z-10 flex items-center justify-center bg-white/80"
                                     >
-                                        <div class="flex flex-col items-center gap-3">
-                                            <div class="h-10 w-10 animate-spin rounded-full border-b-2 border-indigo-600"></div>
-                                            <span class="font-medium text-gray-600">{{
-                                                t("table.loading_data")
-                                            }}</span>
+                                        <div
+                                            class="flex flex-col items-center gap-3"
+                                        >
+                                            <div
+                                                class="h-10 w-10 animate-spin rounded-full border-b-2 border-indigo-600"
+                                            ></div>
+                                            <span
+                                                class="font-medium text-gray-600"
+                                                >{{
+                                                    t("table.loading_data")
+                                                }}</span
+                                            >
                                         </div>
                                     </div>
                                     <ag-grid-vue
@@ -675,13 +756,15 @@ onUnmounted(() => {
                                     class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
                                 >
                                     <div class="flex items-center gap-2">
-                                        <span class="text-xs font-medium text-gray-500">{{
-                                            t("camera.show")
-                                        }}</span>
+                                        <span
+                                            class="text-xs font-medium text-gray-500"
+                                            >{{ t("camera.show") }}</span
+                                        >
                                         <select
                                             :value="
-                                                paginationStateMap[greenhouse.id]
-                                                    ?.perPage ||
+                                                paginationStateMap[
+                                                    greenhouse.id
+                                                ]?.perPage ||
                                                 DEFAULT_CAMERA_PER_PAGE
                                             "
                                             class="h-8 rounded border border-gray-300 px-2 text-sm"
@@ -700,46 +783,78 @@ onUnmounted(() => {
                                                 {{ option }}
                                             </option>
                                         </select>
-                                        <span class="text-xs font-medium text-gray-500">{{
-                                            t("camera.per_page")
-                                        }}</span>
+                                        <span
+                                            class="text-xs font-medium text-gray-500"
+                                            >{{ t("camera.per_page") }}</span
+                                        >
                                     </div>
 
                                     <div class="flex gap-2">
                                         <Button
-                                            @click="onBtFirst(greenhouse.id)"
-                                            :disabled="!canPrevPage(greenhouse.id)"
+                                            @click="
+                                                onBtFirst(greenhouse.id)
+                                            "
+                                            :disabled="
+                                                !canPrevPage(
+                                                    greenhouse.id
+                                                )
+                                            "
                                         >
                                             <i
                                                 class="fas fa-angle-double-left"
                                             ></i>
                                         </Button>
                                         <Button
-                                            @click="onBtPrevious(greenhouse.id)"
-                                            :disabled="!canPrevPage(greenhouse.id)"
+                                            @click="
+                                                onBtPrevious(
+                                                    greenhouse.id
+                                                )
+                                            "
+                                            :disabled="
+                                                !canPrevPage(
+                                                    greenhouse.id
+                                                )
+                                            "
                                         >
                                             <i class="fas fa-angle-left"></i>
                                         </Button>
                                     </div>
                                     <div class="text-center">
-                                        <span class="block text-sm font-medium text-gray-700">{{
-                                            getShowingText(greenhouse.id)
-                                        }}</span>
-                                        <span class="block text-xs text-gray-500">{{
-                                            getPaginationText(greenhouse.id)
-                                        }}</span>
+                                        <span
+                                            class="block text-sm font-medium text-gray-700"
+                                            >{{
+                                                getShowingText(
+                                                    greenhouse.id
+                                                )
+                                            }}</span
+                                        >
+                                        <span class="block text-xs text-gray-500"
+                                            >{{
+                                                getPaginationText(
+                                                    greenhouse.id
+                                                )
+                                            }}</span
+                                        >
                                     </div>
                                     <div class="flex gap-2">
                                         <Button
                                             @click="onBtNext(greenhouse.id)"
-                                            :disabled="!canNextPage(greenhouse.id)"
+                                            :disabled="
+                                                !canNextPage(
+                                                    greenhouse.id
+                                                )
+                                            "
                                         >
                                             <i class="fas fa-angle-right"></i>
                                         </Button>
                                         <Button
                                             @click="onBtLast(greenhouse.id)"
                                             id="btLast"
-                                            :disabled="!canNextPage(greenhouse.id)"
+                                            :disabled="
+                                                !canNextPage(
+                                                    greenhouse.id
+                                                )
+                                            "
                                         >
                                             <i
                                                 class="fas fa-angle-double-right"
