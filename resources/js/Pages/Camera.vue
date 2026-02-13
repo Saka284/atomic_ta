@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { Head, usePage } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import VueDatePicker from "@vuepic/vue-datepicker";
@@ -44,21 +44,11 @@ const actuators = computed(() => [
     },
 ]);
 
-// grid
-const gridOptions = ref({
-    columnDefs: [
-        { field: "recorded_at", sortable: true, resizable: false, suppressMovable: true, flex: 1 },
-        { field: "status", sortable: true, resizable: false, suppressMovable: true, flex: 1 },
-    ],
-    rowSelection: {
-        mode: "singleRow",
-        checkboxes: false,
-        enableClickSelection: true,
-    },
-    initialState: {
-        rowSelection: [],
-    },
-});
+const rowSelectionConfig = {
+    mode: "singleRow",
+    checkboxes: false,
+    enableClickSelection: true,
+};
 
 // column
 const formatCameraDateTime = (rawValue) => {
@@ -186,6 +176,8 @@ const rowClassRules = ref({
 const rowDataMap = ref({});
 const rowImageMap = ref({});
 const paginationStateMap = ref({});
+const rowImageLoadingTimers = ref({});
+const isComponentAlive = ref(true);
 
 const DEFAULT_CAMERA_PER_PAGE = 20;
 
@@ -274,6 +266,10 @@ const fetchData = async (gh_id) => {
 
         const jsonData = await response.json();
 
+        if (!isComponentAlive.value) {
+            return;
+        }
+
         if (Array.isArray(jsonData.data)) {
             const nextPreview = jsonData.data[0] || null;
             if (rowImageMap.value[gh_id]?.image !== nextPreview?.image) {
@@ -292,6 +288,10 @@ const fetchData = async (gh_id) => {
 
         rowTableLoading.value[gh_id] = false;
     } catch (error) {
+        if (!isComponentAlive.value) {
+            return;
+        }
+
         toast.error(t("camera.failed_load_data"));
         console.error("Fetch error:", error);
         rowImageLoading.value[gh_id] = false;
@@ -362,6 +362,10 @@ const exportData = async () => {
 };
 
 const onRowSelected = (event, gh_id) => {
+    if (!isComponentAlive.value) {
+        return;
+    }
+
     if (event.node.isSelected()) {
         rowImageLoading.value[gh_id] = true;
 
@@ -369,11 +373,27 @@ const onRowSelected = (event, gh_id) => {
             rowImageMap.value[gh_id] = { ...event.data };
         }
 
-        setTimeout(() => {
+        if (rowImageLoadingTimers.value[gh_id]) {
+            clearTimeout(rowImageLoadingTimers.value[gh_id]);
+        }
+
+        rowImageLoadingTimers.value[gh_id] = setTimeout(() => {
+            if (!isComponentAlive.value) {
+                return;
+            }
+
             rowImageLoading.value[gh_id] = false;
         }, 500);
     }
 };
+
+onUnmounted(() => {
+    isComponentAlive.value = false;
+    Object.values(rowImageLoadingTimers.value).forEach((timerId) => {
+        clearTimeout(timerId);
+    });
+    rowImageLoadingTimers.value = {};
+});
 </script>
 
 <template>
@@ -575,9 +595,9 @@ const onRowSelected = (event, gh_id) => {
                                         :domLayout="'autoHeight'"
                                         :animateRows="true"
                                         :suppressPaginationPanel="true"
-                                        :gridOptions="gridOptions"
+                                        :rowSelection="rowSelectionConfig"
                                         :rowClassRules="rowClassRules"
-                                        @rowSelected="
+                                        @row-selected="
                                             (event) =>
                                                 onRowSelected(
                                                     event,

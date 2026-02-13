@@ -45,7 +45,7 @@ const messages = {
         "monitoring.status": "Status",
         "monitoring.exhaust_fan": "Kipas Buang",
         "monitoring.dehumidifier": "Dehumidifier",
-        "monitoring.blower": "Kipas Drum",
+        "monitoring.blower": "Kipas Sirkulasi",
         "monitoring.camera": "Kamera",
         "monitoring.on": "NYALA",
         "monitoring.off": "MATI",

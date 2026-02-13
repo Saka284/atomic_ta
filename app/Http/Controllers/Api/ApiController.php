@@ -820,18 +820,23 @@ class ApiController extends Controller
         $payload = Cache::remember($pageCacheKey, 20, function () use ($gh_id, $perPage, $offset, $page, $total) {
             $cameraData = DB::select("
                 SELECT
-                    id, gh_id, image, isFoggy, recorded_at, fog_percentage
+                    id,
+                    gh_id,
+                    image,
+                    isFoggy,
+                    recorded_at,
+                    DATE_FORMAT(recorded_at, '%d/%m/%Y %H:%i:%s') as recorded_at_24h,
+                    fog_percentage
                 FROM camera_data
                 WHERE gh_id = ?
-                ORDER BY recorded_at DESC
+                ORDER BY camera_data.recorded_at DESC
                 LIMIT ? OFFSET ?
             ", [$gh_id, $perPage, $offset]);
 
             // Lightweight formatting map
             $formattedData = array_map(function ($camera) {
-                $camera->recorded_at = Carbon::parse($camera->recorded_at)
-                    ->setTimezone(config('app.timezone'))
-                    ->format('d/m/Y H:i:s');
+                $camera->recorded_at = $camera->recorded_at_24h ?? '-';
+                unset($camera->recorded_at_24h);
                 $camera->image = url($camera->image);
                 $camera->status = $camera->isFoggy ? 'Berkabut' : 'Tidak Berkabut';
                 return $camera;
