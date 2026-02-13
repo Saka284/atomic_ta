@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import Chart from "chart.js/auto";
 
 // Props
@@ -42,6 +42,26 @@ const props = defineProps({
 const canvasRef = ref(null);
 const chartInstance = ref(null);
 
+const isLightIntensitySensor = computed(() => {
+    const sensorName = String(props.sensor_name || "").trim().toLowerCase();
+    return (
+        sensorName === "light intensity" ||
+        sensorName === "light_intensity" ||
+        sensorName === "intensitas cahaya"
+    );
+});
+
+const getDecimalPlaces = () => (isLightIntensitySensor.value ? 0 : 2);
+
+const formatSensorValue = (value) => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+        return value;
+    }
+
+    return numericValue.toFixed(getDecimalPlaces());
+};
+
 const createChart = async () => {
     await nextTick(); // Pastikan DOM sudah ada
 
@@ -59,6 +79,18 @@ const createChart = async () => {
     const datasetSource = props.datasets.length
         ? props.datasets.map((dataset) => ({
               ...dataset,
+              data: Array.isArray(dataset.data)
+                  ? dataset.data.map((value) => {
+                        if (value === null || value === undefined) {
+                            return null;
+                        }
+
+                        const numericValue = Number(value);
+                        return Number.isFinite(numericValue)
+                            ? numericValue
+                            : value;
+                    })
+                  : [],
               borderWidth: dataset.borderWidth ?? 2,
               tension: dataset.tension ?? 0.35,
               pointRadius: dataset.pointRadius ?? 2.5,
@@ -68,7 +100,16 @@ const createChart = async () => {
         : [
               {
                   label: props.sensor_name,
-                  data: [...props.data],
+                  data: [...props.data].map((value) => {
+                      if (value === null || value === undefined) {
+                          return null;
+                      }
+
+                      const numericValue = Number(value);
+                      return Number.isFinite(numericValue)
+                          ? numericValue
+                          : value;
+                  }),
                   backgroundColor: props.chartColor.background,
                   borderColor: props.chartColor.border,
                   borderWidth: 2,
@@ -96,13 +137,10 @@ const createChart = async () => {
                     callbacks: {
                         label: (tooltipItem) => {
                             const rawValue = tooltipItem.raw;
-                            const numericValue = Number(rawValue);
                             const formattedValue =
                                 rawValue === null || rawValue === undefined
                                     ? "-"
-                                    : Number.isFinite(numericValue)
-                                      ? numericValue.toFixed(2)
-                                      : rawValue;
+                                    : formatSensorValue(rawValue);
 
                             return `${tooltipItem.dataset.label}: ${formattedValue}`;
                         },
@@ -110,7 +148,12 @@ const createChart = async () => {
                 },
             },
             scales: {
-                y: { beginAtZero: false },
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: (value) => formatSensorValue(value),
+                    },
+                },
             },
         },
     });

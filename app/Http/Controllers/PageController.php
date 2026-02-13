@@ -15,6 +15,15 @@ use Inertia\Inertia;
 
 class PageController extends Controller
 {
+    private function getGreenhousesBasic()
+    {
+        return Cache::remember('greenhouses_basic', 3600, function () {
+            return Greenhouse::select('id', 'name')
+                ->orderBy('id')
+                ->get();
+        });
+    }
+
     private function ensureSensorSnapshotsReady(): void
     {
         if (Cache::has('sensor_snapshots_ready')) {
@@ -82,9 +91,10 @@ class PageController extends Controller
 
     private function buildMonitoringActuatorStatus(): array
     {
-        $greenhouseIds = Cache::remember('greenhouses', 3600, function () {
-            return Greenhouse::select('id')->orderBy('id')->get();
-        })->pluck('id')->map(fn($id) => (int) $id)->toArray();
+        $greenhouseIds = $this->getGreenhousesBasic()
+            ->pluck('id')
+            ->map(fn($id) => (int) $id)
+            ->toArray();
 
         if (empty($greenhouseIds)) {
             return [];
@@ -225,9 +235,7 @@ class PageController extends Controller
 
     public function table()
     {
-        $greenhouses = Cache::remember('greenhouses', 3600, function () {
-            return Greenhouse::select('id', 'name')->get();
-        });
+        $greenhouses = $this->getGreenhousesBasic();
 
         return Inertia::render('Table', [
             'greenhouses' => $greenhouses,
@@ -243,9 +251,7 @@ class PageController extends Controller
         // ===============================
         // GET ALL GREENHOUSES (cached)
         // ===============================
-        $greenhouses = Cache::remember('greenhouses', 3600, function () {
-            return Greenhouse::select('id', 'name')->get();
-        });
+        $greenhouses = $this->getGreenhousesBasic();
         $ghIds = $greenhouses->pluck('id')->toArray();
 
         return Inertia::render('Heatmap', [
@@ -426,7 +432,12 @@ class PageController extends Controller
         });
         $formattedTime = $latestDataTime ? Carbon::parse($latestDataTime)->format('d/m/Y H:i:s') : null;
         return Inertia::render('Camera', [
-            'latestData' => $formattedTime
+            'latestData' => $formattedTime,
+            'actuatorStatus' => Inertia::defer(function () {
+                return Cache::remember('monitoring_actuator_status', 10, function () {
+                    return $this->buildMonitoringActuatorStatus();
+                });
+            }, 'monitoring'),
         ]);
     }
 

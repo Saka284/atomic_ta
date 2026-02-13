@@ -5,8 +5,6 @@
 </template>
 
 <script>
-import { onMounted } from "vue";
-
 export default {
     name: "GaugeComponent",
     props: {
@@ -34,24 +32,72 @@ export default {
             type: Number,
         },
     },
+    data() {
+        return {
+            gaugeInstance: null,
+        };
+    },
     mounted() {
         this.createGauge();
     },
+    beforeUnmount() {
+        if (this.gaugeInstance && typeof this.gaugeInstance.destroy === "function") {
+            this.gaugeInstance.destroy();
+        }
+
+        this.gaugeInstance = null;
+    },
+    watch: {
+        value(newValue) {
+            if (this.gaugeInstance && typeof this.gaugeInstance.refresh === "function") {
+                this.gaugeInstance.refresh(this.normalizeValue(newValue));
+            }
+        },
+    },
     methods: {
+        isLightIntensityGauge() {
+            const normalizedTitle = String(this.title || "").trim().toLowerCase();
+            const normalizedSymbol = String(this.symbol || "").trim().toLowerCase();
+
+            return (
+                normalizedTitle === "light intensity" ||
+                normalizedTitle === "light_intensity" ||
+                normalizedTitle === "intensitas cahaya" ||
+                normalizedSymbol === "lux"
+            );
+        },
+        getDecimalPlaces() {
+            return this.isLightIntensityGauge() ? 0 : 2;
+        },
+        normalizeValue(value) {
+            const numericValue = Number(value);
+            return Number.isFinite(numericValue) ? numericValue : 0;
+        },
+        formatGaugeValue(value) {
+            const numericValue = Number(value);
+            if (!Number.isFinite(numericValue)) {
+                return "-";
+            }
+
+            return numericValue.toFixed(this.getDecimalPlaces());
+        },
         createGauge() {
             const gaugeId = "gauge-container-" + this.id;
+            const decimalPlaces = this.getDecimalPlaces();
 
-            const gauge = new JustGage({
+            this.gaugeInstance = new JustGage({
                 id: gaugeId,
-                value: this.value,
+                value: this.normalizeValue(this.value),
                 min: this.thd_min,
                 max: this.thd_max,
                 title: this.title,
                 symbol: " " + this.symbol,
                 gaugeWidthScale: 1.0,
-                humanFriendlyDecimal: 2,
+                humanFriendly: false,
+                humanFriendlyDecimal: decimalPlaces,
                 startAnimationType: "bounce",
-                decimals: 2,
+                decimals: decimalPlaces,
+                textRenderer: (value) => this.formatGaugeValue(value),
                 relativeGaugeSize: true,
                 pointer: true,
                 pointerOptions: {
