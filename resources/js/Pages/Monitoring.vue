@@ -13,7 +13,7 @@ import { useToast } from "vue-toastification";
 import { useLocale } from "@/composables/useLocale";
 
 const toast = useToast();
-const { t } = useLocale();
+const { t, locale } = useLocale();
 
 const page = usePage();
 const greenhouses = computed(() => page.props.greenhouses || []);
@@ -39,6 +39,10 @@ const chartRangeOptions = computed(() => [
     { value: "last_1m", label: "1M" },
 ]);
 
+const datePickerLocale = computed(() =>
+    locale.value === "id" ? "id-ID" : "en-US"
+);
+
 const getSensorLabel = (sensorName = "") => {
     const normalized = String(sensorName).trim().toLowerCase();
     if (normalized === "temperature") {
@@ -54,6 +58,91 @@ const getSensorLabel = (sensorName = "") => {
     }
 
     return sensorName;
+};
+
+const getNodeLabel = (nodeId) => `${t("table.node")} ${nodeId}`;
+
+const parseBucketDate = (bucket) => {
+    if (!bucket) {
+        return null;
+    }
+
+    const normalized = String(bucket).includes("T")
+        ? String(bucket)
+        : String(bucket).includes(" ")
+          ? String(bucket).replace(" ", "T")
+          : `${bucket}T00:00:00`;
+
+    const parsedDate = new Date(normalized);
+    if (Number.isNaN(parsedDate.getTime())) {
+        return null;
+    }
+
+    return parsedDate;
+};
+
+const formatDayMonthLabel = (date) => {
+    const formatter = new Intl.DateTimeFormat(datePickerLocale.value, {
+        day: "2-digit",
+        month: "short",
+    });
+    const parts = formatter.formatToParts(date);
+    const day = parts.find((part) => part.type === "day")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+
+    return day && month ? `${day} ${month}` : formatter.format(date);
+};
+
+const formatHourMinuteLabel = (date) => {
+    return new Intl.DateTimeFormat(datePickerLocale.value, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).format(date);
+};
+
+const localizeBucketLabel = (bucket, bucketType = "hour") => {
+    const parsedDate = parseBucketDate(bucket);
+    if (!parsedDate) {
+        return bucket || "";
+    }
+
+    if (bucketType === "minute") {
+        return formatHourMinuteLabel(parsedDate);
+    }
+
+    if (bucketType === "day") {
+        return formatDayMonthLabel(parsedDate);
+    }
+
+    return `${formatDayMonthLabel(parsedDate)} ${formatHourMinuteLabel(
+        parsedDate
+    )}`;
+};
+
+const localizeChartLabels = (rawLabels = [], bucketType = "hour") => {
+    return rawLabels.map((bucket) => localizeBucketLabel(bucket, bucketType));
+};
+
+const buildPerNodeDatasets = (datasets = []) => {
+    return datasets.map((dataset) => {
+        const nodeId = Number(
+            dataset.node_id || String(dataset.label || "").replace(/[^\d]/g, "")
+        );
+        const color = getNodeColor(nodeId);
+
+        return {
+            label: getNodeLabel(nodeId),
+            data: Array.isArray(dataset.data) ? dataset.data : [],
+            borderColor: color,
+            backgroundColor: hexToRgba(color, 0.18),
+            borderWidth: 2,
+            tension: 0.35,
+            pointRadius: 2.5,
+            pointHoverRadius: 4,
+            fill: false,
+        };
+    });
 };
 
 const actuatorCards = computed(() => [
@@ -356,28 +445,30 @@ const applyChartPayload = (sensor_id, payload) => {
         data.value[activeTab.value].chart[sensor_id] = {};
     }
 
-    const isPerNode = Array.isArray(payload?.datasets) && payload.datasets.length > 0;
+    const isPerNode =
+        Array.isArray(payload?.datasets) && payload.datasets.length > 0;
+    const chartRawLabels =
+        Array.isArray(payload?.raw_labels) && payload.raw_labels.length > 0
+            ? payload.raw_labels
+            : Array.isArray(payload?.label)
+              ? payload.label
+              : [];
+    const chartRawDatasets = isPerNode
+        ? Array.isArray(payload?.datasets)
+            ? payload.datasets
+            : []
+        : [];
+    const bucketType = payload?.bucket_type || "hour";
     const chartDatasets = isPerNode
-        ? payload.datasets.map((dataset) => {
-              const nodeId = Number(dataset.node_id || String(dataset.label || "").replace(/[^\d]/g, ""));
-              const color = getNodeColor(nodeId);
-              return {
-                  label: dataset.label || `Node ${nodeId}`,
-                  data: Array.isArray(dataset.data) ? dataset.data : [],
-                  borderColor: color,
-                  backgroundColor: hexToRgba(color, 0.18),
-                  borderWidth: 2,
-                  tension: 0.35,
-                  pointRadius: 2.5,
-                  pointHoverRadius: 4,
-                  fill: false,
-              };
-          })
+        ? buildPerNodeDatasets(chartRawDatasets)
         : [];
 
     data.value[activeTab.value].chart[sensor_id] = {
         chartData: Array.isArray(payload?.data) ? payload.data : [],
-        chartLabel: Array.isArray(payload?.label) ? payload.label : [],
+        chartLabel: localizeChartLabels(chartRawLabels, bucketType),
+        chartRawLabels,
+        chartRawDatasets,
+        bucketType,
         chartColor: getChartColor(
             gaugeData.value.find((s) => s.sensor_id == sensor_id)?.name
         ),
@@ -389,9 +480,47 @@ const applyChartPayload = (sensor_id, payload) => {
 const normalizeChartPayload = (payload) => ({
     mode: payload?.mode === "per_node" ? "per_node" : "avg",
     label: Array.isArray(payload?.label) ? payload.label : [],
+    raw_labels: Array.isArray(payload?.raw_labels) ? payload.raw_labels : [],
+    bucket_type: payload?.bucket_type || "hour",
     data: Array.isArray(payload?.data) ? payload.data : [],
     datasets: Array.isArray(payload?.datasets) ? payload.datasets : [],
 });
+
+const relocalizeLoadedCharts = () => {
+    Object.values(data.value).forEach((ghData) => {
+        const chartEntries = ghData?.chart;
+        if (!chartEntries) {
+            return;
+        }
+
+        Object.values(chartEntries).forEach((entry) => {
+            if (!entry) {
+                return;
+            }
+
+            const nextRawLabels = Array.isArray(entry.chartRawLabels)
+                ? entry.chartRawLabels
+                : Array.isArray(entry.chartLabel)
+                  ? entry.chartLabel
+                  : [];
+            const nextBucketType = entry.bucketType || "hour";
+
+            entry.chartLabel = localizeChartLabels(
+                nextRawLabels,
+                nextBucketType
+            );
+
+            if (
+                Array.isArray(entry.chartRawDatasets) &&
+                entry.chartRawDatasets.length > 0
+            ) {
+                entry.chartDatasets = buildPerNodeDatasets(
+                    entry.chartRawDatasets
+                );
+            }
+        });
+    });
+};
 
 const fetchData = async (sensor_id) => {
     try {
@@ -484,6 +613,10 @@ watch(activeTab, async (newTab) => {
     }
 
     await loadChartsForTab(newTab);
+});
+
+watch(locale, () => {
+    relocalizeLoadedCharts();
 });
 </script>
 
@@ -649,6 +782,7 @@ watch(activeTab, async (newTab) => {
                                             "
                                             range
                                             position="right"
+                                            :locale="datePickerLocale"
                                             :placeholder="t('monitoring.date')"
                                             :format="formatDateRangeDisplay"
                                             :enable-time-picker="false"

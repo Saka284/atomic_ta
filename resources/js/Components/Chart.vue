@@ -116,7 +116,11 @@ const createChart = async () => {
     });
 };
 
-watch(() => [props.data, props.label, props.datasets], createChart, { deep: true });
+watch(
+    () => [props.data, props.label, props.datasets, props.sensor_name],
+    createChart,
+    { deep: true }
+);
 
 onMounted(createChart);
 
