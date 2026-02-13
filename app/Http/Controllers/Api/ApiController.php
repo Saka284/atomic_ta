@@ -829,7 +829,9 @@ class ApiController extends Controller
 
             // Lightweight formatting map
             $formattedData = array_map(function ($camera) {
-                $camera->recorded_at = date('d/m/Y H:i:s', strtotime($camera->recorded_at));
+                $camera->recorded_at = Carbon::parse($camera->recorded_at)
+                    ->setTimezone(config('app.timezone'))
+                    ->format('d/m/Y H:i:s');
                 $camera->image = url($camera->image);
                 $camera->status = $camera->isFoggy ? 'Berkabut' : 'Tidak Berkabut';
                 return $camera;

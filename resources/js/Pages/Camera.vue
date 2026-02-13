@@ -61,6 +61,48 @@ const gridOptions = ref({
 });
 
 // column
+const formatCameraDateTime = (rawValue) => {
+    if (rawValue === null || rawValue === undefined || rawValue === "") {
+        return "-";
+    }
+
+    const value = String(rawValue).trim();
+    const slashFormatMatch = value.match(
+        /^(\d{2})\/(\d{2})\/(\d{4})\s(\d{1,2}):(\d{2}):(\d{2})(?:\s?(AM|PM))?$/i
+    );
+    if (slashFormatMatch) {
+        const [, day, month, year, hourRaw, minute, second, meridiemRaw] =
+            slashFormatMatch;
+        let hour = Number(hourRaw);
+        const meridiem = meridiemRaw ? meridiemRaw.toUpperCase() : null;
+        if (meridiem === "PM" && hour < 12) {
+            hour += 12;
+        }
+        if (meridiem === "AM" && hour === 12) {
+            hour = 0;
+        }
+
+        return `${day}/${month}/${year} ${String(hour).padStart(
+            2,
+            "0"
+        )}:${minute}:${second}`;
+    }
+
+    const isoLikeValue = value.includes("T") ? value : value.replace(" ", "T");
+    const parsedDate = new Date(isoLikeValue);
+    if (Number.isNaN(parsedDate.getTime())) {
+        return value;
+    }
+
+    const day = String(parsedDate.getDate()).padStart(2, "0");
+    const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+    const year = parsedDate.getFullYear();
+    const hour = String(parsedDate.getHours()).padStart(2, "0");
+    const minute = String(parsedDate.getMinutes()).padStart(2, "0");
+    const second = String(parsedDate.getSeconds()).padStart(2, "0");
+    return `${day}/${month}/${year} ${hour}:${minute}:${second}`;
+};
+
 const columnDefs = computed(() => [
     {
         headerName: t("camera.date_time"),
@@ -70,6 +112,8 @@ const columnDefs = computed(() => [
         suppressMovable: true,
         headerClass: "camera-header-center",
         cellClass: "camera-cell-center",
+        cellStyle: { textAlign: "center" },
+        valueFormatter: (params) => formatCameraDateTime(params.value),
         flex: 1,
     },
     {
@@ -81,6 +125,7 @@ const columnDefs = computed(() => [
         headerClass: "camera-header-center",
         flex: 1,
         cellClass: "camera-cell-center",
+        cellStyle: { textAlign: "center" },
         cellRenderer: (params) => {
             return params.value !== null && params.value !== undefined
                 ? `${params.value}%`
@@ -96,6 +141,7 @@ const columnDefs = computed(() => [
         headerClass: "camera-header-center",
         flex: 1,
         cellClass: "camera-cell-center",
+        cellStyle: { textAlign: "center" },
         cellRenderer: (params) => {
             const status = params.value || "Unknown";
             const statusLabelMap = {
@@ -521,6 +567,7 @@ const onRowSelected = (event, gh_id) => {
                                         </div>
                                     </div>
                                     <ag-grid-vue
+                                        class="camera-grid"
                                         :rowData="
                                             rowDataMap[greenhouse.id] || []
                                         "
@@ -589,11 +636,14 @@ const onRowSelected = (event, gh_id) => {
 </template>
 
 <style scoped>
-:deep(.ag-theme-alpine .camera-header-center .ag-header-cell-label) {
+:deep(.camera-grid .camera-header-center .ag-header-cell-label) {
     justify-content: center;
 }
 
-:deep(.ag-theme-alpine .camera-cell-center) {
+:deep(.camera-grid .camera-cell-center) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     text-align: center;
 }
 </style>
