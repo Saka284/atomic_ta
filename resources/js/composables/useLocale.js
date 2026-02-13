@@ -66,6 +66,27 @@ const messages = {
         "camera.no_data_selected_range":
             "Tidak ada data pada rentang tanggal tersebut.",
         "camera.failed_download": "Gagal mengunduh file.",
+        "table.failed_load_data": "Gagal memuat data.",
+        "table.date_range_required": "Rentang tanggal wajib diisi.",
+        "table.excel_downloaded": "File Excel berhasil diunduh.",
+        "table.failed_download": "Gagal mengunduh file.",
+        "controlling.unsaved_threshold_changes":
+            "Ada perubahan threshold yang belum disimpan!",
+        "controlling.unsaved_schedule_changes":
+            "Ada perubahan jadwal yang belum disimpan!",
+        "controlling.no_threshold_changes":
+            "Tidak ada perubahan untuk disimpan.",
+        "controlling.threshold_updated": "Threshold berhasil diperbarui!",
+        "controlling.failed_update_threshold": "Gagal memperbarui threshold.",
+        "controlling.max_schedule":
+            "Maksimal 4 jadwal per greenhouse!",
+        "controlling.schedule_deleted": "Jadwal berhasil dihapus!",
+        "controlling.failed_delete_schedule": "Gagal menghapus jadwal.",
+        "controlling.invalid_schedule_time":
+            "Periksa waktu jadwal. Start time harus sebelum end time.",
+        "controlling.schedule_saved": "Jadwal berhasil disimpan!",
+        "controlling.failed_save_schedule": "Gagal menyimpan jadwal.",
+        "controlling.validation_failed_prefix": "Validasi gagal: ",
     },
     en: {
         "layout.brand_console": "Greenhouse Console",
@@ -128,6 +149,27 @@ const messages = {
         "camera.no_data_selected_range":
             "No data found for selected date range.",
         "camera.failed_download": "Failed to download file.",
+        "table.failed_load_data": "Failed to load data.",
+        "table.date_range_required": "Date range is required.",
+        "table.excel_downloaded": "Excel file downloaded successfully.",
+        "table.failed_download": "Failed to download file.",
+        "controlling.unsaved_threshold_changes":
+            "There are unsaved threshold changes.",
+        "controlling.unsaved_schedule_changes":
+            "There are unsaved schedule changes.",
+        "controlling.no_threshold_changes":
+            "There are no changes to save.",
+        "controlling.threshold_updated": "Threshold updated successfully.",
+        "controlling.failed_update_threshold": "Failed to update threshold.",
+        "controlling.max_schedule":
+            "Maximum 4 schedules per greenhouse.",
+        "controlling.schedule_deleted": "Schedule deleted successfully.",
+        "controlling.failed_delete_schedule": "Failed to delete schedule.",
+        "controlling.invalid_schedule_time":
+            "Check schedule time. Start time must be before end time.",
+        "controlling.schedule_saved": "Schedule saved successfully.",
+        "controlling.failed_save_schedule": "Failed to save schedule.",
+        "controlling.validation_failed_prefix": "Validation failed: ",
     },
 };
 

@@ -7,8 +7,10 @@ import ScheduleCard from "@/Components/ScheduleCard.vue";
 import Slider from "@vueform/slider";
 import { useToast } from "vue-toastification";
 import axios from "axios";
+import { useLocale } from "@/composables/useLocale";
 
 const toast = useToast();
+const { t } = useLocale();
 
 const page = usePage();
 const greenhouses = page.props.greenhouses || [];
@@ -22,24 +24,57 @@ const isSavingSchedules = ref(false);
 
 const data = ref([]);
 const threshold = ref({});
+const initialThreshold = ref({});
 const editedThresholds = ref({});
 
 const schedules = ref({});
 const originalSchedules = ref({});
 let scheduleIdCounter = 1;
 
+const normalizeSchedule = (schedule = {}, fallbackGhId = null) => {
+    const fallbackActuators = {
+        blower: schedule?.relay_blower ?? "threshold",
+        exhaust: schedule?.relay_exhaust ?? "threshold",
+        dehumidifier: schedule?.relay_dehumidifier ?? "threshold",
+    };
+
+    const actuators = schedule?.actuators
+        ? {
+              blower: schedule.actuators.blower ?? fallbackActuators.blower,
+              exhaust: schedule.actuators.exhaust ?? fallbackActuators.exhaust,
+              dehumidifier:
+                  schedule.actuators.dehumidifier ??
+                  fallbackActuators.dehumidifier,
+          }
+        : fallbackActuators;
+
+    return {
+        ...schedule,
+        id: schedule.id || scheduleIdCounter++,
+        greenhouse_id:
+            schedule.greenhouse_id ?? schedule.gh_id ?? fallbackGhId ?? activeTab.value,
+        enabled: schedule.enabled ?? true,
+        start_time: String(schedule.start_time ?? "08:00").slice(0, 5),
+        end_time: String(schedule.end_time ?? "12:00").slice(0, 5),
+        actuators,
+    };
+};
+
 const hydrateFromProps = () => {
     data.value = Array.isArray(initialData.value) ? initialData.value : [];
     threshold.value = {};
+    initialThreshold.value = {};
     editedThresholds.value = {};
 
     if (Array.isArray(data.value)) {
         data.value.forEach((greenhouse) => {
             greenhouse.sensor.forEach((sensor) => {
-                threshold.value[sensor.id] = [
-                    sensor.threshold_min ?? 0,
-                    sensor.threshold_max ?? 100,
+                const sensorThreshold = [
+                    Number(sensor.threshold_min ?? 0),
+                    Number(sensor.threshold_max ?? 100),
                 ];
+                threshold.value[sensor.id] = [...sensorThreshold];
+                initialThreshold.value[sensor.id] = [...sensorThreshold];
             });
         });
     }
@@ -49,10 +84,7 @@ const hydrateFromProps = () => {
     const nextOriginal = {};
     greenhouses.forEach((gh) => {
         const ghSchedules = initialSchedules.value?.[gh.id] || [];
-        nextSchedules[gh.id] = ghSchedules.map((s) => ({
-            ...s,
-            id: s.id || scheduleIdCounter++,
-        }));
+        nextSchedules[gh.id] = ghSchedules.map((s) => normalizeSchedule(s, gh.id));
         nextOriginal[gh.id] = JSON.parse(
             JSON.stringify(nextSchedules[gh.id]),
         );
@@ -98,10 +130,9 @@ const loadSchedules = async (ghId) => {
     try {
         const response = await axios.get(`/api/schedules?gh_id=${ghId}`);
         if (response.data?.success && response.data?.schedules) {
-            const loadedSchedules = response.data.schedules.map((s) => ({
-                ...s,
-                id: s.id || scheduleIdCounter++,
-            }));
+            const loadedSchedules = response.data.schedules.map((s) =>
+                normalizeSchedule(s, ghId),
+            );
             schedules.value[ghId] = loadedSchedules;
             originalSchedules.value[ghId] = JSON.parse(
                 JSON.stringify(loadedSchedules),
@@ -114,11 +145,11 @@ const loadSchedules = async (ghId) => {
 
 const confirmTabChange = (newTab) => {
     if (isThresholdChanged.value && newTab != activeTab.value) {
-        toast.warning("Ada perubahan threshold yang belum disimpan!");
+        toast.warning(t("controlling.unsaved_threshold_changes"));
         return false;
     }
     if (isScheduleChanged.value && newTab != activeTab.value) {
-        toast.warning("Ada perubahan jadwal yang belum disimpan!");
+        toast.warning(t("controlling.unsaved_schedule_changes"));
         return false;
     }
     activeTab.value = newTab;
@@ -163,13 +194,30 @@ const hasInvalidTimes = computed(() => {
 });
 
 const updateThreshold = (sensor_id, value) => {
-    editedThresholds.value[sensor_id] = value;
+    const nextValue = Array.isArray(value)
+        ? [Number(value[0]), Number(value[1])]
+        : [
+              Number(threshold.value[sensor_id]?.[0] ?? 0),
+              Number(threshold.value[sensor_id]?.[1] ?? 0),
+          ];
+
+    threshold.value[sensor_id] = [...nextValue];
+
+    const originalValue = initialThreshold.value[sensor_id] ?? [0, 100];
+    if (
+        nextValue[0] !== Number(originalValue[0]) ||
+        nextValue[1] !== Number(originalValue[1])
+    ) {
+        editedThresholds.value[sensor_id] = [...nextValue];
+    } else {
+        delete editedThresholds.value[sensor_id];
+    }
 };
 
 const saveThresholds = () => {
     isSaving.value = true;
     if (Object.keys(editedThresholds.value).length == 0) {
-        toast.info("Tidak ada perubahan untuk disimpan");
+        toast.info(t("controlling.no_threshold_changes"));
         isSaving.value = false;
         return;
     }
@@ -199,17 +247,18 @@ const saveThresholds = () => {
                             editedThresholds.value[sensor.id];
                         sensor.threshold_min = newMin;
                         sensor.threshold_max = newMax;
+                        initialThreshold.value[sensor.id] = [newMin, newMax];
                         threshold.value[sensor.id] = [newMin, newMax];
                     }
                 });
             });
 
-            toast.success("Threshold berhasil diperbarui!");
+            toast.success(t("controlling.threshold_updated"));
             editedThresholds.value = {};
             isSaving.value = false;
         })
         .catch(() => {
-            toast.error("Gagal memperbarui threshold");
+            toast.error(t("controlling.failed_update_threshold"));
             isSaving.value = false;
         });
 };
@@ -230,7 +279,7 @@ const createDefaultSchedule = () => ({
 
 const addSchedule = () => {
     if (!canAddSchedule.value) {
-        toast.warning("Maksimal 4 jadwal per greenhouse!");
+        toast.warning(t("controlling.max_schedule"));
         return;
     }
     schedules.value[activeTab.value].push(createDefaultSchedule());
@@ -274,15 +323,15 @@ const deleteSchedule = async (scheduleId) => {
             originalSchedules.value[activeTab.value] = JSON.parse(
                 JSON.stringify(schedules.value[activeTab.value]),
             );
-            toast.success("Jadwal berhasil dihapus!");
+            toast.success(t("controlling.schedule_deleted"));
         } else {
-            toast.error("Gagal menghapus jadwal");
+            toast.error(t("controlling.failed_delete_schedule"));
             // Reload to restore original state
             await loadSchedules(activeTab.value);
         }
     } catch (error) {
         console.error("Error deleting schedule:", error);
-        toast.error("Gagal menghapus jadwal");
+        toast.error(t("controlling.failed_delete_schedule"));
         // Reload to restore original state
         await loadSchedules(activeTab.value);
     }
@@ -290,7 +339,7 @@ const deleteSchedule = async (scheduleId) => {
 
 const saveSchedules = async () => {
     if (hasInvalidTimes.value) {
-        toast.error("Periksa waktu jadwal! Start time harus sebelum end time.");
+        toast.error(t("controlling.invalid_schedule_time"));
         return;
     }
 
@@ -306,58 +355,33 @@ const saveSchedules = async () => {
 
         if (response.data?.success) {
             await loadSchedules(activeTab.value);
-            toast.success("Jadwal berhasil disimpan!");
+            toast.success(t("controlling.schedule_saved"));
         } else {
-            toast.error(response.data?.message || "Gagal menyimpan jadwal");
+            toast.error(t("controlling.failed_save_schedule"));
         }
     } catch (error) {
         console.error("Error saving schedules:", error);
         if (error.response?.data?.errors) {
             toast.error(
-                "Validasi gagal: " +
+                t("controlling.validation_failed_prefix") +
                     Object.values(error.response.data.errors).flat().join(", "),
             );
         } else {
-            toast.error("Gagal menyimpan jadwal");
+            toast.error(t("controlling.failed_save_schedule"));
         }
     } finally {
         isSavingSchedules.value = false;
     }
 };
-
-watch(
-    threshold,
-    (newValues) => {
-        const activeGreenhouse = data.value.find(
-            (gh) => gh.id == activeTab.value,
-        );
-        if (!activeGreenhouse) return;
-
-        activeGreenhouse.sensor.forEach((sensor) => {
-            const original = [
-                sensor.threshold_min ?? 0,
-                sensor.threshold_max ?? 100,
-            ];
-            const newValue = newValues[sensor.id];
-
-            if (JSON.stringify(newValue) !== JSON.stringify(original)) {
-                editedThresholds.value[sensor.id] = [...newValue];
-            } else {
-                delete editedThresholds.value[sensor.id];
-            }
-        });
-    },
-    { deep: true },
-);
 </script>
 
 <template>
-    <Head title="Controlling" />
+    <Head :title="t('title.controlling')" />
 
     <BreezeAuthenticatedLayout :titlePage="'Controlling'">
         <template #header>
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                Controlling
+                {{ t("title.controlling") }}
             </h2>
         </template>
 
@@ -451,6 +475,7 @@ watch(
                                             v-model.number="
                                                 threshold[sensor.id][0]
                                             "
+                                            @input="updateThreshold(sensor.id, threshold[sensor.id])"
                                             step="0.01"
                                             class="w-full pl-10 pr-3 py-2 border rounded-lg text-center text-xs sm:text-sm focus:ring focus:ring-blue-300 hover:border-blue-400 transition"
                                         />
@@ -472,6 +497,7 @@ watch(
                                             v-model.number="
                                                 threshold[sensor.id][1]
                                             "
+                                            @input="updateThreshold(sensor.id, threshold[sensor.id])"
                                             step="0.01"
                                             class="w-full pl-10 pr-3 py-2 border rounded-lg text-center text-xs sm:text-sm focus:ring focus:ring-blue-300 hover:border-blue-400 transition"
                                         />
