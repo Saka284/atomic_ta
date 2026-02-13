@@ -17,7 +17,7 @@ const emit = defineEmits(["update", "delete", "toggle"]);
 const isExpanded = ref(false);
 
 const actuators = [
-    { key: "blower", name: "Blower", icon: "fas fa-fan", color: "text-red-500" },
+    { key: "blower", name: "Drum Fan", icon: "fas fa-fan", color: "text-red-500" },
     { key: "exhaust", name: "Exhaust Fan", icon: "fas fa-fan", color: "text-yellow-500" },
     { key: "dehumidifier", name: "Dehumidifier", icon: "fas fa-tint", color: "text-cyan-500" },
 ];
