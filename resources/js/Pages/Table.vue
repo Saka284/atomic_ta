@@ -29,6 +29,8 @@ const currentPage = ref(1);
 const perPage = ref(10);
 const totalRows = ref(0);
 const lastPage = ref(1);
+const sortField = ref("recorded_at");
+const sortDirection = ref("desc");
 const responseCache = new Map();
 const CACHE_TTL_MS = 30000;
 const CACHE_LIMIT = 40;
@@ -53,7 +55,7 @@ const columnDefs = computed(() => [
         headerName: t("table.node"),
         field: "node_id",
         filter: false,
-        sortable: false,
+        sortable: true,
         minWidth: 80,
         maxWidth: 90,
     },
@@ -61,42 +63,42 @@ const columnDefs = computed(() => [
         headerName: t("table.date"),
         field: "date",
         filter: false,
-        sortable: false,
+        sortable: true,
         minWidth: 120,
     },
     {
         headerName: t("table.time"),
         field: "time",
         filter: false,
-        sortable: false,
+        sortable: true,
         minWidth: 100,
     },
     {
         headerName: t("table.temperature"),
         field: "temperature",
         filter: false,
-        sortable: false,
+        sortable: true,
         minWidth: 150,
     },
     {
         headerName: t("table.humidity"),
         field: "humidity",
         filter: false,
-        sortable: false,
+        sortable: true,
         minWidth: 130,
     },
     {
         headerName: t("table.light_intensity"),
         field: "light_intensity",
         filter: false,
-        sortable: false,
+        sortable: true,
         minWidth: 160,
     },
     {
         headerName: t("table.rssi"),
         field: "rssi",
         filter: false,
-        sortable: false,
+        sortable: true,
         minWidth: 120,
     },
 ]);
@@ -117,6 +119,8 @@ const buildQueryData = () => {
         gh_id: activeTab.value,
         page: currentPage.value,
         per_page: perPage.value,
+        sort_field: sortField.value,
+        sort_direction: sortDirection.value,
     };
 
     if (daterange.value) {
@@ -247,6 +251,24 @@ const onPerPageChange = () => {
     fetchData();
 };
 
+const onSortChanged = (params) => {
+    const sortedColumn = params.api
+        .getColumnState()
+        .find((column) => Boolean(column.sort));
+
+    if (!sortedColumn) {
+        sortField.value = "recorded_at";
+        sortDirection.value = "desc";
+    } else {
+        const nextSortField = sortedColumn.colId || "recorded_at";
+        sortField.value = nextSortField;
+        sortDirection.value = sortedColumn.sort || "desc";
+    }
+
+    currentPage.value = 1;
+    fetchData({ force: true });
+};
+
 // On tab switch, reset everything and fetch
 watch(activeTab, () => {
     currentPage.value = 1;
@@ -340,30 +362,30 @@ const exportData = async () => {
                     class="mb-4"
                 />
 
-                <div class="bg-white shadow-sm rounded-lg p-4">
-                    <div class="flex flex-col md:flex-row justify-center md:justify-between mb-6 gap-4">
-                        <h3 class="text-2xl text-center md:text-left self-center">
+                <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <div class="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <h3 class="self-center text-2xl font-semibold text-gray-800 md:self-auto">
                             {{ t("table.monitoring_data") }}
                         </h3>
                         
                         <!-- Filter Controls -->
-                        <div class="flex flex-col gap-3 items-end justify-center bg-gray-50 p-2 rounded-lg border border-gray-100">
+                        <div class="flex flex-wrap items-center justify-end gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2">
                             
                             <!-- Date Filter -->
-                            <div class="flex items-center gap-2 w-full justify-end">
-                                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">{{ t("table.date") }}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-gray-500">{{ t("table.date") }}</span>
                                 <VueDatePicker
                                     v-model="daterange"
                                     range
                                     position:right
                                     :placeholder="t('table.filter_by_date')"
-                                    class="w-64 shadow-sm"
+                                    class="w-52 shadow-sm"
                                 />
                             </div>
 
                             <!-- Node Filter & Export Action -->
-                            <div class="flex gap-2 w-full justify-end items-center">
-                                <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">{{ t("table.node") }}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-gray-500">{{ t("table.node") }}</span>
                                 <select 
                                     v-model="selectedNode"
                                     class="border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 rounded-md shadow-sm h-[38px] w-40 text-sm"
@@ -374,7 +396,7 @@ const exportData = async () => {
                                     </option>
                                 </select>
                                 
-                                <div class="h-8 w-[1px] bg-gray-300 mx-1"></div> <!-- Divider -->
+                                <div class="mx-1 h-8 w-[1px] bg-gray-300"></div>
 
                                 <button
                                     :disabled="isExporting"
@@ -405,6 +427,7 @@ const exportData = async () => {
                             :domLayout="'autoHeight'"
                             :theme="themeAlpine"
                             :suppressPaginationPanel="true"
+                            @sort-changed="onSortChanged"
                         >
                         </ag-grid-vue>
                     </div>
