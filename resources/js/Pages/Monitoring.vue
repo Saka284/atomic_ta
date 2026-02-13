@@ -32,11 +32,11 @@ const chartMode = ref({});
 const chartRange = ref({});
 
 const chartRangeOptions = computed(() => [
-    { value: "custom", label: t("common.all").toUpperCase() },
-    { value: "last_1h", label: "1H" },
-    { value: "last_1d", label: "1D" },
-    { value: "last_1w", label: "1W" },
-    { value: "last_1m", label: "1M" },
+    { value: "custom", label: t("monitoring.range_custom") },
+    { value: "last_1h", label: t("monitoring.range_1h") },
+    { value: "last_1d", label: t("monitoring.range_1d") },
+    { value: "last_1w", label: t("monitoring.range_1w") },
+    { value: "last_1m", label: t("monitoring.range_1m") },
 ]);
 
 const datePickerLocale = computed(() =>
