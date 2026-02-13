@@ -1,178 +1,248 @@
 <script setup>
-import { ref } from "vue";
-import BreezeApplicationLogo from "@/Components/ApplicationLogo.vue";
+import { computed, ref } from "vue";
 import BreezeNavLink from "@/Components/NavLink.vue";
 import BreezeDropdown from "@/Components/Dropdown.vue";
 import BreezeDropdownLink from "@/Components/DropdownLink.vue";
 import { Link } from "@inertiajs/vue3";
+import { useLocale } from "@/composables/useLocale";
 
 const isSidebarOpen = ref(false);
+const { locale, setLocale, t } = useLocale();
 
-defineProps(["titlePage"]);
+const props = defineProps(["titlePage"]);
+
+const navItems = computed(() => [
+    {
+        label: t("nav.monitoring"),
+        routeName: "monitoring",
+        icon: "fas fa-chart-line",
+        description: t("nav.monitoring_desc"),
+    },
+    {
+        label: t("nav.heatmap"),
+        routeName: "heatmap",
+        icon: "fas fa-layer-group",
+        description: t("nav.heatmap_desc"),
+    },
+    {
+        label: t("nav.table"),
+        routeName: "table",
+        icon: "fas fa-table",
+        description: t("nav.table_desc"),
+    },
+    {
+        label: t("nav.camera"),
+        routeName: "camera",
+        icon: "fas fa-camera",
+        description: t("nav.camera_desc"),
+    },
+    {
+        label: t("nav.controlling"),
+        routeName: "controlling",
+        icon: "fas fa-sliders-h",
+        description: t("nav.controlling_desc"),
+    },
+]);
+
+const pageTitle = computed(() => {
+    const normalized = String(props.titlePage || "")
+        .trim()
+        .toLowerCase();
+    const titleKeyMap = {
+        monitoring: "title.monitoring",
+        heatmap: "title.heatmap",
+        table: "title.table",
+        camera: "title.camera",
+        controlling: "title.controlling",
+    };
+    const key = titleKeyMap[normalized];
+    return key ? t(key) : props.titlePage;
+});
+
+const closeSidebar = () => {
+    isSidebarOpen.value = false;
+};
+
+const toggleSidebar = () => {
+    isSidebarOpen.value = !isSidebarOpen.value;
+};
+
+const handleNavClick = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 640) {
+        closeSidebar();
+    }
+};
+
+const switchToIndonesian = () => {
+    setLocale("id");
+};
+
+const switchToEnglish = () => {
+    setLocale("en");
+};
 </script>
 
 <template>
-    <div class="flex min-h-screen bg-gray-100 relative">
-        <div 
+    <div class="relative min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/40 to-white text-slate-800">
+        <div
             v-if="isSidebarOpen"
-            @click="isSidebarOpen = false"
-            class="fixed inset-0 bg-black bg-opacity-50 z-[999] sm:hidden"
+            @click="closeSidebar"
+            class="fixed inset-0 z-[1990] bg-slate-900/45 backdrop-blur-[1px]"
         ></div>
 
-        <aside
-            :class="[
-                'w-64 bg-white border-r border-gray-200 transform transition-transform z-[1000] min-h-screen fixed sm:relative',
-                isSidebarOpen ? 'translate-x-0' : '-translate-x-64',
-                'sm:translate-x-0',
-            ]"
-        >
-            <button
-                @click="isSidebarOpen = false"
-                class="absolute top-4 right-4 p-2 rounded-full bg-gray-200 hover:bg-gray-300 sm:hidden"
+        <div class="relative flex min-h-screen">
+            <aside
+                :class="[
+                    'fixed inset-y-0 left-0 z-[2000] w-72 max-w-[88vw] transform transition-transform duration-300 ease-out',
+                    isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+                ]"
             >
-                <svg
-                    class="w-6 h-6 text-gray-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                >
-                    <path d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-            </button>
+                <div class="h-full p-3">
+                    <div class="flex h-full flex-col overflow-hidden rounded-2xl border border-emerald-200/70 bg-white/95 shadow-xl shadow-emerald-900/5 backdrop-blur">
+                        <div class="flex items-center justify-between border-b border-emerald-100 px-4 py-4">
+                            <Link
+                                :href="route('monitoring')"
+                                class="inline-flex items-center gap-3"
+                            >
+                                <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-600/25">
+                                    <i class="fas fa-seedling text-lg"></i>
+                                </span>
+                                <span class="leading-tight">
+                                    <span class="block text-lg font-bold tracking-tight text-emerald-700">
+                                        Medini
+                                    </span>
+                                    <span class="block text-xs text-slate-500">
+                                        {{ t("layout.brand_console") }}
+                                    </span>
+                                </span>
+                            </Link>
 
-            <div class="h-16 flex items-center justify-center border-b">
-                <Link
-                    :href="route('monitoring')"
-                    class="text-2xl font-bold tracking-wide text-green-600 flex items-center gap-2"
-                >
-                    <i class="fas fa-seedling text-green-600 text-3xl"></i>
-                    Medini
-                </Link>
-            </div>
-            <nav class="px-4 py-6 flex flex-col">
-                <BreezeNavLink
-                    :href="route('monitoring')"
-                    :active="route().current('monitoring')"
-                    :icon="'fas fa-chart-bar'"
-                    class="justify-center"
-                >
-                    Monitoring
-                </BreezeNavLink>
-                <BreezeNavLink
-                    :href="route('heatmap')"
-                    :active="route().current('heatmap')"
-                    :icon="'fas fa-map-marked-alt'" 
-                    class="justify-center"
-                >
-                    Heatmap
-                </BreezeNavLink>
-                <BreezeNavLink
-                    :href="route('table')"
-                    :active="route().current('table')"
-                    :icon="'fas fa-table'"
-                    class="justify-center"
-                >
-                    Table
-                </BreezeNavLink>
-                <BreezeNavLink
-                    :href="route('camera')"
-                    :active="route().current('camera')"
-                    :icon="'fas fa-camera-retro'"
-                    class="justify-center"
-                >
-                    Camera
-                </BreezeNavLink>
-                <BreezeNavLink
-                    :href="route('controlling')"
-                    :active="route().current('controlling')"
-                    :icon="'fas fa-sliders-h'"
-                    class="justify-center"
-                >
-                    Controlling
-                </BreezeNavLink>
-            </nav>
-        </aside>
-
-        <div class="flex-1 flex flex-col w-full">
-            <header
-                class="bg-white shadow h-16 flex items-center px-4 sm:px-6 lg:px-8"
-            >
-                <button
-                    @click="isSidebarOpen = !isSidebarOpen"
-                    class="sm:hidden text-gray-500 hover:text-gray-700"
-                >
-                    <svg
-                        class="h-6 w-6"
-                        stroke="currentColor"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            v-if="!isSidebarOpen"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M4 6h16M4 12h16M4 18h16"
-                        />
-                        <path
-                            v-else
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12"
-                        />
-                    </svg>
-                </button>
-                <h1
-                    :class="[
-                        'text-2xl font-bold',
-                        !isSidebarOpen ? 'ml-2' : '',
-                    ]"
-                >
-                    {{ titlePage }}
-                </h1>
-
-                <div class="ml-auto">
-                    <BreezeDropdown align="right" width="48">
-                        <template #trigger="{ open }">
                             <button
-                                class="w-full flex justify-between items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                                @click="closeSidebar"
+                                class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                                :aria-label="t('layout.close_sidebar')"
                             >
-                                {{ $page.props.auth.user.username }}
-                                <svg
-                                    class="h-4 w-4 transition-transform duration-200"
-                                    :class="{ 'rotate-180': open }"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                >
-                                    <path
-                                        fill-rule="evenodd"
-                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                        clip-rule="evenodd"
-                                    />
-                                </svg>
+                                <i class="fas fa-times text-sm"></i>
                             </button>
-                        </template>
-                        <template #content>
-                            <BreezeDropdownLink
-                                :href="route('logout')"
-                                method="post"
-                                as="button"
-                            >
-                                Log Out
-                            </BreezeDropdownLink>
-                        </template>
-                    </BreezeDropdown>
-                </div>
-            </header>
+                        </div>
 
-            <main class="flex-1 p-6">
-                <slot />
-            </main>
+                        <div class="flex-1 overflow-y-auto px-3 py-4">
+                            <p class="px-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                {{ t("layout.navigation") }}
+                            </p>
+                            <nav class="mt-3 space-y-2">
+                                <BreezeNavLink
+                                    v-for="item in navItems"
+                                    :key="item.routeName"
+                                    :href="route(item.routeName)"
+                                    :active="route().current(item.routeName)"
+                                    :icon="item.icon"
+                                    :description="item.description"
+                                    @click="handleNavClick"
+                                >
+                                    {{ item.label }}
+                                </BreezeNavLink>
+                            </nav>
+                        </div>
+
+                        <div class="border-t border-emerald-100 px-4 py-4">
+                            <div class="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3">
+                                <p class="text-xs font-semibold uppercase tracking-[0.1em] text-emerald-700">
+                                    {{ t("layout.system_status") }}
+                                </p>
+                                <p class="mt-1 text-sm font-medium text-slate-700">
+                                    {{ t("layout.dashboard_ready") }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <div class="flex min-w-0 flex-1 flex-col">
+                <header class="sticky top-0 z-30 border-b border-emerald-100/70 bg-white/90 backdrop-blur">
+                    <div class="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+                        <button
+                            @click="toggleSidebar"
+                            class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+                            :aria-label="t('layout.toggle_navigation')"
+                        >
+                            <i :class="isSidebarOpen ? 'fas fa-times' : 'fas fa-bars'"></i>
+                        </button>
+
+                        <div class="min-w-0">
+                            <h1 class="truncate text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">
+                                {{ pageTitle }}
+                            </h1>
+                            <p class="hidden text-xs text-slate-500 sm:block">
+                                {{ t("layout.header_subtitle") }}
+                            </p>
+                        </div>
+
+                        <div class="ml-auto flex items-center gap-2">
+                            <div
+                                class="inline-flex items-center rounded-xl border border-slate-200 bg-white p-1"
+                                :title="t('layout.language')"
+                            >
+                                <button
+                                    type="button"
+                                    class="rounded-lg px-2 py-1 text-xs font-semibold transition"
+                                    :class="
+                                        locale === 'id'
+                                            ? 'bg-emerald-500 text-white'
+                                            : 'text-slate-600 hover:bg-slate-100'
+                                    "
+                                    @click="switchToIndonesian"
+                                >
+                                    ID
+                                </button>
+                                <button
+                                    type="button"
+                                    class="rounded-lg px-2 py-1 text-xs font-semibold transition"
+                                    :class="
+                                        locale === 'en'
+                                            ? 'bg-emerald-500 text-white'
+                                            : 'text-slate-600 hover:bg-slate-100'
+                                    "
+                                    @click="switchToEnglish"
+                                >
+                                    EN
+                                </button>
+                            </div>
+
+                            <BreezeDropdown align="right" width="52">
+                                <template #trigger="{ open }">
+                                    <button
+                                        class="inline-flex items-center gap-3 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50"
+                                    >
+                                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                                            {{ ($page.props.auth.user.username || "U")[0].toUpperCase() }}
+                                        </span>
+                                        <span class="hidden sm:inline">{{ $page.props.auth.user.username }}</span>
+                                        <i
+                                            class="fas fa-chevron-down text-[11px] transition-transform duration-200"
+                                            :class="{ 'rotate-180': open }"
+                                        ></i>
+                                    </button>
+                                </template>
+                                <template #content>
+                                    <BreezeDropdownLink
+                                        :href="route('logout')"
+                                        method="post"
+                                        as="button"
+                                    >
+                                        {{ t("layout.logout") }}
+                                    </BreezeDropdownLink>
+                                </template>
+                            </BreezeDropdown>
+                        </div>
+                    </div>
+                </header>
+
+                <main class="flex-1 p-4 sm:p-6 lg:p-8">
+                    <slot />
+                </main>
+            </div>
         </div>
     </div>
 </template>
