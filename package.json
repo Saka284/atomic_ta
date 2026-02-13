@@ -35,5 +35,8 @@
         "vue": "^3.2.31",
         "vue-toastification": "^2.0.0-rc.5",
         "ziggy-js": "^2.6.0"
+    },
+    "overrides": {
+        "webpack-dev-server": "^5.2.1"
     }
 }
