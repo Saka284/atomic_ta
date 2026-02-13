@@ -402,14 +402,14 @@ const fetchData = async (sensor_id) => {
 
         const jsonData = await response.json();
         if (jsonData?.success === false) {
-            throw new Error(jsonData?.message || "Gagal memuat chart.");
+            throw new Error(jsonData?.message || "Failed to load chart.");
         }
 
         const normalizedPayload = normalizeChartPayload(jsonData);
         setChartCachedPayload(cacheKey, normalizedPayload);
         applyChartPayload(sensor_id, normalizedPayload);
     } catch (error) {
-        toast.error(error?.message || "Gagal memuat data!");
+        toast.error(error?.message || "Failed to load data.");
         console.error("Fetch error:", error);
     } finally {
         isFetching.value[sensor_id] = false;
@@ -622,7 +622,7 @@ watch(activeTab, async (newTab) => {
                                             "
                                             range
                                             position="right"
-                                            placeholder="Tgl"
+                                            placeholder="Date"
                                             :format="formatDateRangeDisplay"
                                             :enable-time-picker="false"
                                             :teleport="true"
@@ -656,7 +656,7 @@ watch(activeTab, async (newTab) => {
                                                 }"
                                             >
                                                 <option value="">
-                                                    Pilih Jam
+                                                    Hour
                                                 </option>
                                                 <option
                                                     v-for="hour in 24"
