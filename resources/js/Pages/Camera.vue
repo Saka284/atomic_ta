@@ -216,7 +216,7 @@ const loadedGreenhouseMap = ref({});
 const cameraRequestTokens = new Map();
 const cameraFetchControllers = new Map();
 
-const DEFAULT_CAMERA_PER_PAGE = 20;
+const DEFAULT_CAMERA_PER_PAGE = 5;
 const CAMERA_PER_PAGE_OPTIONS = [5, 10, 20, 50, 100];
 
 const abortCameraFetch = (gh_id) => {

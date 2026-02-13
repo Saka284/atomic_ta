@@ -387,10 +387,56 @@ function drawMarkers() {
         </div>
       </div>
     `, {
-      closeButton: true,
+      closeButton: false,
       className: isTopNode ? "node-popup popup-bottom" : "node-popup",
       // Offset: [x, y] - y positif = popup ke bawah
       offset: isTopNode ? [0, 140] : [0, 0],
+    });
+
+    // UX: tampilkan informasi node saat hover, tanpa harus klik marker.
+    let popupCloseTimer = null;
+    let popupElement = null;
+    const cancelPopupClose = () => {
+      if (popupCloseTimer !== null) {
+        clearTimeout(popupCloseTimer);
+        popupCloseTimer = null;
+      }
+    };
+    const schedulePopupClose = () => {
+      cancelPopupClose();
+      popupCloseTimer = setTimeout(() => {
+        marker.closePopup();
+      }, 140);
+    };
+
+    const onPopupMouseEnter = () => {
+      cancelPopupClose();
+    };
+    const onPopupMouseLeave = () => {
+      schedulePopupClose();
+    };
+
+    marker.on("mouseover", () => {
+      cancelPopupClose();
+      marker.openPopup();
+    });
+    marker.on("mouseout", () => {
+      schedulePopupClose();
+    });
+    marker.on("popupopen", () => {
+      popupElement = marker.getPopup()?.getElement() || null;
+      if (popupElement) {
+        popupElement.addEventListener("mouseenter", onPopupMouseEnter);
+        popupElement.addEventListener("mouseleave", onPopupMouseLeave);
+      }
+    });
+    marker.on("popupclose", () => {
+      if (popupElement) {
+        popupElement.removeEventListener("mouseenter", onPopupMouseEnter);
+        popupElement.removeEventListener("mouseleave", onPopupMouseLeave);
+        popupElement = null;
+      }
+      cancelPopupClose();
     });
 
     marker.addTo(markersLayer);
