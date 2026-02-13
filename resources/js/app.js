@@ -7,6 +7,12 @@ import "vue-toastification/dist/index.css";
 
 import { ZiggyVue } from "ziggy-js";
 
+if (typeof globalThis !== "undefined") {
+    globalThis.__VUE_OPTIONS_API__ = true;
+    globalThis.__VUE_PROD_DEVTOOLS__ = false;
+    globalThis.__VUE_PROD_HYDRATION_MISMATCH_DETAILS__ = false;
+}
+
 const appName =
     window.document.getElementsByTagName("title")[0]?.innerText || "Laravel";
 

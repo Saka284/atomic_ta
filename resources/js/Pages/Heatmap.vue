@@ -298,11 +298,11 @@ function getStatus(value) {
   }
   
   const rangeStop = upper.stop - lower.stop;
-  const t = rangeStop === 0 ? 0 : (normalized - lower.stop) / rangeStop;
+  const ratio = rangeStop === 0 ? 0 : (normalized - lower.stop) / rangeStop;
   
-  const r = Math.round(lower.r + (upper.r - lower.r) * t);
-  const g = Math.round(lower.g + (upper.g - lower.g) * t);
-  const b = Math.round(lower.b + (upper.b - lower.b) * t);
+  const r = Math.round(lower.r + (upper.r - lower.r) * ratio);
+  const g = Math.round(lower.g + (upper.g - lower.g) * ratio);
+  const b = Math.round(lower.b + (upper.b - lower.b) * ratio);
   
   const color = `rgb(${r}, ${g}, ${b})`;
   
@@ -451,12 +451,12 @@ function interpolateColor(value) {
   
   // Interpolate between lower and upper
   const range = upper.stop - lower.stop;
-  const t = range === 0 ? 0 : (v - lower.stop) / range;
+  const ratio = range === 0 ? 0 : (v - lower.stop) / range;
   
   return {
-    r: Math.round(lower.r + (upper.r - lower.r) * t),
-    g: Math.round(lower.g + (upper.g - lower.g) * t),
-    b: Math.round(lower.b + (upper.b - lower.b) * t),
+    r: Math.round(lower.r + (upper.r - lower.r) * ratio),
+    g: Math.round(lower.g + (upper.g - lower.g) * ratio),
+    b: Math.round(lower.b + (upper.b - lower.b) * ratio),
   };
 }
 

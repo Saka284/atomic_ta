@@ -68,6 +68,8 @@ const columnDefs = computed(() => [
         sortable: true,
         resizable: false,
         suppressMovable: true,
+        headerClass: "camera-header-center",
+        cellClass: "camera-cell-center",
         flex: 1,
     },
     {
@@ -76,10 +78,13 @@ const columnDefs = computed(() => [
         sortable: true,
         resizable: false,
         suppressMovable: true,
+        headerClass: "camera-header-center",
         flex: 1,
-        cellClass: "text-center",
+        cellClass: "camera-cell-center",
         cellRenderer: (params) => {
-            return params.value ? `${params.value}%` : "-";
+            return params.value !== null && params.value !== undefined
+                ? `${params.value}%`
+                : "-";
         },
     },
     {
@@ -88,8 +93,9 @@ const columnDefs = computed(() => [
         sortable: true,
         resizable: false,
         suppressMovable: true,
+        headerClass: "camera-header-center",
         flex: 1,
-        cellClass: "text-center",
+        cellClass: "camera-cell-center",
         cellRenderer: (params) => {
             const status = params.value || "Unknown";
             const statusLabelMap = {
@@ -581,3 +587,13 @@ const onRowSelected = (event, gh_id) => {
         </div>
     </BreezeAuthenticatedLayout>
 </template>
+
+<style scoped>
+:deep(.ag-theme-alpine .camera-header-center .ag-header-cell-label) {
+    justify-content: center;
+}
+
+:deep(.ag-theme-alpine .camera-cell-center) {
+    text-align: center;
+}
+</style>
