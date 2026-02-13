@@ -37,7 +37,7 @@ const messages = {
         "monitoring.status": "Status",
         "monitoring.exhaust_fan": "Kipas Exhaust",
         "monitoring.dehumidifier": "Dehumidifier",
-        "monitoring.blower": "Blower",
+        "monitoring.blower": "Drum Fan",
         "monitoring.on": "NYALA",
         "monitoring.off": "MATI",
         "monitoring.average": "Rata-rata",
@@ -99,7 +99,7 @@ const messages = {
         "monitoring.status": "Status",
         "monitoring.exhaust_fan": "Exhaust Fan",
         "monitoring.dehumidifier": "Dehumidifier",
-        "monitoring.blower": "Blower",
+        "monitoring.blower": "Drum Fan",
         "monitoring.on": "ON",
         "monitoring.off": "OFF",
         "monitoring.average": "Average",
@@ -164,7 +164,7 @@ const setLocale = (nextLocale) => {
 const t = (key, fallback = "") => {
     const byLocale = messages[locale.value] || messages[DEFAULT_LOCALE];
     const byDefault = messages[DEFAULT_LOCALE];
-    return byLocale[key] ?? byDefault[key] ?? fallback || key;
+    return (byLocale[key] ?? byDefault[key] ?? fallback) || key;
 };
 
 export const useLocale = () => {
