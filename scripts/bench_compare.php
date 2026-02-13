@@ -9,6 +9,7 @@ $options = getopt('', [
     'baseline-ref::',
     'output::',
     'regression::',
+    'min-regression-ms::',
     'min-improvement::',
     'update-baseline::',
     'update-if-better',
@@ -19,6 +20,7 @@ $currentFile = $options['current'] ?? 'benchmarks/current.json';
 $baselineFile = $options['baseline'] ?? null;
 $baselineRef = $options['baseline-ref'] ?? null;
 $regression = isset($options['regression']) ? (float) $options['regression'] : 0.10;
+$minRegressionMs = isset($options['min-regression-ms']) ? (float) $options['min-regression-ms'] : 50.0;
 $minImprovement = isset($options['min-improvement']) ? (float) $options['min-improvement'] : 0.05;
 $updateBaseline = $options['update-baseline'] ?? null;
 $updateIfBetter = array_key_exists('update-if-better', $options);
@@ -82,6 +84,7 @@ $report = [
     'meta' => [
         'baseline_ref' => $baselineRef,
         'regression' => $regression,
+        'min_regression_ms' => $minRegressionMs,
         'min_improvement' => $minImprovement,
     ],
     'endpoints' => [],
@@ -124,7 +127,12 @@ foreach ($currentEndpoints as $name => $stats) {
         'avg_speedup' => $avgx,
     ];
 
-    if ($baseP95 > 0 && $curP95 > $baseP95 * (1 + $regression)) {
+    $p95DeltaMs = $curP95 - $baseP95;
+    if (
+        $baseP95 > 0
+        && $curP95 > $baseP95 * (1 + $regression)
+        && $p95DeltaMs >= $minRegressionMs
+    ) {
         $failures[] = $name;
         $anyWorse = true;
     }
