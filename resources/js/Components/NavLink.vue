@@ -16,7 +16,8 @@ const classes = computed(() =>
         :href="href"
         :class="classes"
         class="flex items-center justify-between w-full"
-        prefetch
+        :prefetch="['mount', 'hover', 'click']"
+        :cacheFor="60000"
     >
         <div class="flex items-center gap-4">
             <i v-if="icon" :class="`${icon} text-lg`"></i>

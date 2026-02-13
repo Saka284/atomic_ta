@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, watch, computed } from "vue";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import { Head, usePage } from "@inertiajs/vue3";
 import Tabs from "@/Components/Tabs.vue";
@@ -10,13 +10,17 @@ import axios from "axios";
 
 const toast = useToast();
 
-const { greenhouses, initialData, initialSchedules } = usePage().props;
+const page = usePage();
+const greenhouses = page.props.greenhouses || [];
+const initialData = computed(() => page.props.initialData || []);
+const initialSchedules = computed(() => page.props.initialSchedules || {});
+
 const activeTab = ref(greenhouses[0]?.id);
 const activeSubTab = ref("threshold");
 const isSaving = ref(false);
 const isSavingSchedules = ref(false);
 
-const data = ref(initialData || []);
+const data = ref([]);
 const threshold = ref({});
 const editedThresholds = ref({});
 
@@ -24,24 +28,11 @@ const schedules = ref({});
 const originalSchedules = ref({});
 let scheduleIdCounter = 1;
 
-greenhouses.forEach((gh) => {
-    const ghSchedules = initialSchedules?.[gh.id] || [];
-    schedules.value[gh.id] = ghSchedules.map((s) => ({
-        ...s,
-        id: s.id || scheduleIdCounter++,
-    }));
-    originalSchedules.value[gh.id] = JSON.parse(JSON.stringify(schedules.value[gh.id]));
-});
+const hydrateFromProps = () => {
+    data.value = Array.isArray(initialData.value) ? initialData.value : [];
+    threshold.value = {};
+    editedThresholds.value = {};
 
-const getMaxValue = (unit) => {
-    if (unit.toLowerCase().includes("lux")) {
-        return 60000;
-    } else {
-        return 100;
-    }
-};
-
-onMounted(() => {
     if (Array.isArray(data.value)) {
         data.value.forEach((greenhouse) => {
             greenhouse.sensor.forEach((sensor) => {
@@ -52,7 +43,56 @@ onMounted(() => {
             });
         });
     }
-});
+
+    scheduleIdCounter = 1;
+    const nextSchedules = {};
+    const nextOriginal = {};
+    greenhouses.forEach((gh) => {
+        const ghSchedules = initialSchedules.value?.[gh.id] || [];
+        nextSchedules[gh.id] = ghSchedules.map((s) => ({
+            ...s,
+            id: s.id || scheduleIdCounter++,
+        }));
+        nextOriginal[gh.id] = JSON.parse(
+            JSON.stringify(nextSchedules[gh.id]),
+        );
+    });
+
+    schedules.value = nextSchedules;
+    originalSchedules.value = nextOriginal;
+};
+
+const getMaxValue = (unit) => {
+    if (unit.toLowerCase().includes("lux")) {
+        return 60000;
+    } else {
+        return 100;
+    }
+};
+
+watch(
+    [initialData, initialSchedules],
+    (values) => {
+        const [dataValue, scheduleValue] = values;
+        if (!(dataValue.length || Object.keys(scheduleValue).length)) {
+            return;
+        }
+
+        hydrateFromProps();
+    },
+    { immediate: true },
+);
+
+watch(
+    activeTab,
+    (ghId) => {
+        if (ghId && !schedules.value[ghId]) {
+            schedules.value[ghId] = [];
+            originalSchedules.value[ghId] = [];
+        }
+    },
+    { immediate: true }
+);
 
 const loadSchedules = async (ghId) => {
     try {
