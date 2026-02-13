@@ -460,6 +460,8 @@ class ApiController extends Controller
                 return [
                     'mode' => 'per_node',
                     'label' => $labels,
+                    'raw_labels' => $rawLabels,
+                    'bucket_type' => $bucketType,
                     'data' => [],
                     'datasets' => $datasets,
                 ];
@@ -486,12 +488,15 @@ class ApiController extends Controller
                 fn($row) => $this->formatChartBucketLabel($row->bucket, $bucketType),
                 $dataQuery
             );
+            $rawLabels = array_map(fn($row) => $row->bucket, $dataQuery);
             $values = array_map(fn($row) => (float) $row->avg_value, $dataQuery);
 
             return [
                 'mode' => 'avg',
                 'data' => $values,
                 'label' => $labels,
+                'raw_labels' => $rawLabels,
+                'bucket_type' => $bucketType,
                 'datasets' => [],
             ];
         });

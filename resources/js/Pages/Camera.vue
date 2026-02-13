@@ -21,6 +21,7 @@ const daterange = ref();
 const isExporting = ref(false);
 const selectedGreenhouse = ref("");
 const rowImageLoading = ref({});
+const rowTableLoading = ref({});
 
 const actuators = computed(() => [
     {
@@ -136,8 +137,6 @@ const paginationStateMap = ref({});
 
 const DEFAULT_CAMERA_PER_PAGE = 20;
 
-const gridApiMap = ref({});
-
 const ensurePaginationState = (gh_id) => {
     if (!paginationStateMap.value[gh_id]) {
         paginationStateMap.value[gh_id] = {
@@ -205,8 +204,7 @@ const fetchData = async (gh_id) => {
     const state = ensurePaginationState(gh_id);
 
     try {
-        showLoading(gh_id);
-        rowImageLoading.value[gh_id] = true;
+        rowTableLoading.value[gh_id] = true;
 
         const queryData = {
             gh_id: gh_id,
@@ -225,8 +223,13 @@ const fetchData = async (gh_id) => {
         const jsonData = await response.json();
 
         if (Array.isArray(jsonData.data)) {
+            const nextPreview = jsonData.data[0] || null;
+            if (rowImageMap.value[gh_id]?.image !== nextPreview?.image) {
+                rowImageLoading.value[gh_id] = Boolean(nextPreview);
+            }
+
             rowDataMap.value[gh_id] = jsonData.data;
-            rowImageMap.value[gh_id] = jsonData.data[0] || null;
+            rowImageMap.value[gh_id] = nextPreview;
             state.total = Number(jsonData.total || 0);
             state.lastPage = Number(jsonData.last_page || 1);
             state.page = Number(jsonData.page || state.page);
@@ -235,13 +238,12 @@ const fetchData = async (gh_id) => {
             console.error("Data format error: Expected array", jsonData);
         }
 
-        hideLoading(gh_id);
-        rowImageLoading.value[gh_id] = false;
+        rowTableLoading.value[gh_id] = false;
     } catch (error) {
         toast.error(t("camera.failed_load_data"));
         console.error("Fetch error:", error);
-        hideLoading(gh_id);
         rowImageLoading.value[gh_id] = false;
+        rowTableLoading.value[gh_id] = false;
     }
 };
 
@@ -251,22 +253,6 @@ onMounted(() => {
         fetchData(greenhouse.id);
     });
 });
-
-const onGridReady = (params, gh_id) => {
-    gridApiMap.value[gh_id] = params.api;
-};
-
-const showLoading = (gh_id) => {
-    if (gridApiMap.value[gh_id]) {
-        gridApiMap.value[gh_id].showLoadingOverlay();
-    }
-};
-
-const hideLoading = (gh_id) => {
-    if (gridApiMap.value[gh_id]) {
-        gridApiMap.value[gh_id].hideOverlay();
-    }
-};
 
 const formatDate = (date) => {
     return new Date(date).toISOString().split("T")[0];
@@ -516,7 +502,18 @@ const onRowSelected = (event, gh_id) => {
                                 />
                             </div>
                             <div class="flex flex-col gap-2">
-                                <div>
+                                <div class="relative">
+                                    <div
+                                        v-if="rowTableLoading[greenhouse.id]"
+                                        class="absolute inset-0 z-10 flex items-center justify-center bg-white/80"
+                                    >
+                                        <div class="flex flex-col items-center gap-3">
+                                            <div class="h-10 w-10 animate-spin rounded-full border-b-2 border-indigo-600"></div>
+                                            <span class="font-medium text-gray-600">{{
+                                                t("table.loading_data")
+                                            }}</span>
+                                        </div>
+                                    </div>
                                     <ag-grid-vue
                                         :rowData="
                                             rowDataMap[greenhouse.id] || []
@@ -531,13 +528,6 @@ const onRowSelected = (event, gh_id) => {
                                             (event) =>
                                                 onRowSelected(
                                                     event,
-                                                    greenhouse.id
-                                                )
-                                        "
-                                        @grid-ready="
-                                            (params) =>
-                                                onGridReady(
-                                                    params,
                                                     greenhouse.id
                                                 )
                                         "
