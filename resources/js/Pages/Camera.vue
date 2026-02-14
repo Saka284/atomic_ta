@@ -209,7 +209,11 @@ const rowClassRules = ref({
 // data
 const rowDataMap = ref({});
 const rowImageMap = ref({});
+<<<<<<< HEAD
 const paginationStateMap = ref({});
+=======
+const paginationMetaMap = ref({});
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 const rowImageLoadingTimers = ref({});
 const isComponentAlive = ref(true);
 const loadedGreenhouseMap = ref({});
@@ -218,6 +222,7 @@ const cameraFetchControllers = new Map();
 
 const DEFAULT_CAMERA_PER_PAGE = 5;
 const CAMERA_PER_PAGE_OPTIONS = [5, 10, 20, 50, 100];
+<<<<<<< HEAD
 
 const abortCameraFetch = (gh_id) => {
     const controller = cameraFetchControllers.get(gh_id);
@@ -319,6 +324,155 @@ const onPerPageChange = (gh_id, value) => {
             : DEFAULT_CAMERA_PER_PAGE;
     state.page = 1;
     fetchData(gh_id, { force: true });
+=======
+const cameraPageMap = ref({});
+const sharedPerPage = ref(DEFAULT_CAMERA_PER_PAGE);
+
+const getGreenhouseLabel = (greenhouse) => {
+    const label = String(greenhouse?.name || "").trim();
+    const ghId = Number(greenhouse?.id);
+    const fallbackNumber = Number.isFinite(ghId) && ghId > 0 ? ghId : null;
+
+    const normalized = label
+        .toLowerCase()
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const labelNumberMatch = normalized.match(/(\d+)$/);
+    const labelNumber = labelNumberMatch ? Number(labelNumberMatch[1]) : null;
+    const tabNumber = labelNumber ?? fallbackNumber;
+
+    return Number.isFinite(tabNumber) && tabNumber > 0
+        ? `GH Von Florist ${tabNumber}`
+        : "GH Von Florist";
+};
+
+const getCameraLabel = (index) => {
+    return `${t("monitoring.camera")} ${index + 1}`;
+};
+
+const abortCameraFetch = (gh_id) => {
+    const controller = cameraFetchControllers.get(gh_id);
+    if (!controller) {
+        return;
+    }
+
+    controller.abort();
+    cameraFetchControllers.delete(gh_id);
+};
+
+const abortAllCameraFetches = () => {
+    cameraFetchControllers.forEach((controller) => controller.abort());
+    cameraFetchControllers.clear();
+};
+
+const ensurePaginationMeta = (gh_id) => {
+    if (!paginationMetaMap.value[gh_id]) {
+        paginationMetaMap.value[gh_id] = {
+            total: 0,
+            lastPage: 1,
+        };
+    }
+
+    return paginationMetaMap.value[gh_id];
+};
+
+const ensureCameraPage = (gh_id) => {
+    if (!cameraPageMap.value[gh_id]) {
+        cameraPageMap.value[gh_id] = 1;
+    }
+
+    return cameraPageMap.value[gh_id];
+};
+
+const getCurrentPage = (gh_id) => {
+    return ensureCameraPage(gh_id);
+};
+
+const getCameraLastPage = (gh_id) => {
+    const meta = ensurePaginationMeta(gh_id);
+    return Math.max(1, Number(meta.lastPage || 1));
+};
+
+const globalLastPage = computed(() => {
+    const greenhouseList = Array.isArray(greenhouses) ? greenhouses : [];
+    if (greenhouseList.length === 0) {
+        return 1;
+    }
+
+    const maxLastPage = greenhouseList.reduce((maxValue, greenhouse) => {
+        const meta = ensurePaginationMeta(greenhouse.id);
+        return Math.max(maxValue, Number(meta.lastPage || 1));
+    }, 1);
+
+    return Math.max(1, maxLastPage);
+});
+
+const getPaginationText = (gh_id) => {
+    const meta = ensurePaginationMeta(gh_id);
+    if (meta.total <= 0) {
+        return t("camera.page_no_data");
+    }
+
+    return `${getCurrentPage(gh_id)} ${t("common.of")} ${globalLastPage.value}`;
+};
+
+const canPrevPage = (gh_id) => {
+    return getCurrentPage(gh_id) > 1;
+};
+
+const canNextPage = (gh_id) => {
+    return getCurrentPage(gh_id) < getCameraLastPage(gh_id);
+};
+
+const fetchAllGreenhouses = async ({ force = false } = {}) => {
+    const greenhouseList = Array.isArray(greenhouses) ? greenhouses : [];
+    const jobs = greenhouseList.map((greenhouse) =>
+        fetchData(greenhouse.id, { force })
+    );
+    await Promise.all(jobs);
+};
+
+const goToPage = (gh_id, nextPage) => {
+    const parsedGhId = Number(gh_id);
+    if (!Number.isFinite(parsedGhId) || parsedGhId <= 0) {
+        return;
+    }
+
+    const clampedPage = Math.max(
+        1,
+        Math.min(nextPage, getCameraLastPage(parsedGhId))
+    );
+    if (clampedPage === getCurrentPage(parsedGhId)) {
+        return;
+    }
+
+    cameraPageMap.value[parsedGhId] = clampedPage;
+    fetchData(parsedGhId, { force: true });
+};
+
+const onBtNext = (gh_id) => {
+    goToPage(gh_id, getCurrentPage(gh_id) + 1);
+};
+
+const onBtPrevious = (gh_id) => {
+    goToPage(gh_id, getCurrentPage(gh_id) - 1);
+};
+
+const onPerPageChange = (value) => {
+    const parsedPerPage = Number(value);
+    sharedPerPage.value =
+        Number.isFinite(parsedPerPage) && parsedPerPage > 0
+            ? parsedPerPage
+            : DEFAULT_CAMERA_PER_PAGE;
+
+    const greenhouseList = Array.isArray(greenhouses) ? greenhouses : [];
+    greenhouseList.forEach((greenhouse) => {
+        cameraPageMap.value[greenhouse.id] = 1;
+    });
+    fetchAllGreenhouses({ force: true });
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 };
 
 // fetch data table
@@ -336,7 +490,11 @@ const fetchData = async (gh_id, { force = false } = {}) => {
         return;
     }
 
+<<<<<<< HEAD
     const state = ensurePaginationState(parsedGhId);
+=======
+    ensurePaginationMeta(parsedGhId);
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
     const requestToken = (cameraRequestTokens.get(parsedGhId) || 0) + 1;
     cameraRequestTokens.set(parsedGhId, requestToken);
     abortCameraFetch(parsedGhId);
@@ -348,8 +506,13 @@ const fetchData = async (gh_id, { force = false } = {}) => {
 
         const queryData = {
             gh_id: parsedGhId,
+<<<<<<< HEAD
             page: state.page,
             per_page: state.perPage,
+=======
+            page: getCurrentPage(parsedGhId),
+            per_page: sharedPerPage.value,
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
         };
         const url =
             `/api/camera-per-gh?dict=` +
@@ -381,10 +544,24 @@ const fetchData = async (gh_id, { force = false } = {}) => {
 
             rowDataMap.value[parsedGhId] = jsonData.data;
             rowImageMap.value[parsedGhId] = nextPreview;
+<<<<<<< HEAD
             state.total = Number(jsonData.total || 0);
             state.lastPage = Number(jsonData.last_page || 1);
             state.page = Number(jsonData.page || state.page);
             loadedGreenhouseMap.value[parsedGhId] = true;
+=======
+            const meta = ensurePaginationMeta(parsedGhId);
+            meta.total = Number(jsonData.total || 0);
+            meta.lastPage = Number(jsonData.last_page || 1);
+            loadedGreenhouseMap.value[parsedGhId] = true;
+
+            const maxPage = getCameraLastPage(parsedGhId);
+            if (getCurrentPage(parsedGhId) > maxPage) {
+                cameraPageMap.value[parsedGhId] = maxPage;
+                await fetchData(parsedGhId, { force: true });
+                return;
+            }
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
         } else {
             toast.error(t("camera.failed_load_data"));
             console.error("Data format error: Expected array", jsonData);
@@ -422,9 +599,13 @@ const loadGreenhouseDataIfNeeded = (gh_id, { force = false } = {}) => {
 };
 
 onMounted(() => {
+<<<<<<< HEAD
     (greenhouses || []).forEach((greenhouse) => {
         loadGreenhouseDataIfNeeded(greenhouse.id);
     });
+=======
+    fetchAllGreenhouses();
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 });
 
 const formatDate = (date) => {
@@ -642,13 +823,42 @@ onUnmounted(() => {
                     </div>
                 </div>
                 
+                <div
+                    class="mb-2 flex flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-center"
+                >
+                    <div
+                        class="flex w-full items-center justify-center gap-2 sm:w-auto"
+                    >
+                        <span class="text-xs font-medium text-gray-500">{{
+                            t("camera.show")
+                        }}</span>
+                        <select
+                            :value="sharedPerPage"
+                            class="h-8 rounded border border-gray-300 px-2 text-sm"
+                            @change="onPerPageChange($event.target.value)"
+                        >
+                            <option
+                                v-for="option in CAMERA_PER_PAGE_OPTIONS"
+                                :key="`shared-per-page-${option}`"
+                                :value="option"
+                            >
+                                {{ option }}
+                            </option>
+                        </select>
+                        <span class="text-xs font-medium text-gray-500">{{
+                            t("camera.per_page")
+                        }}</span>
+                    </div>
+                </div>
+
                 <div class="flex flex-col lg:flex-row gap-2">
                     <div
-                        v-for="greenhouse in greenhouses"
+                        v-for="(greenhouse, index) in greenhouses"
                         :key="greenhouse.id"
                         class="bg-white overflow-hidden shadow-sm rounded-lg p-4 w-full"
                     >
                         <div
+<<<<<<< HEAD
                             class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4"
                         >
                             <p class="text-lg font-semibold leading-tight">
@@ -656,6 +866,22 @@ onUnmounted(() => {
                             </p>
 
                             <div class="flex flex-col items-end">
+=======
+                            class="mb-4 flex w-full flex-col items-center gap-2 text-center md:flex-row md:items-center md:justify-between md:text-left"
+                        >
+                            <div class="flex flex-col">
+                                <p class="text-lg font-semibold leading-tight">
+                                    {{ getCameraLabel(index) }}
+                                </p>
+                                <p
+                                    class="text-xs font-medium uppercase tracking-wide text-gray-500"
+                                >
+                                    {{ getGreenhouseLabel(greenhouse) }}
+                                </p>
+                            </div>
+
+                            <div class="flex flex-col items-center md:items-end">
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
                                 <div
                                     v-if="
                                         rowImageMap[greenhouse.id]
@@ -753,6 +979,7 @@ onUnmounted(() => {
                                     </ag-grid-vue>
                                 </div>
                                 <div
+<<<<<<< HEAD
                                     class="flex flex-wrap items-center gap-2 sm:flex-row sm:items-center sm:justify-between"
                                 >
                                     <div
@@ -865,6 +1092,27 @@ onUnmounted(() => {
                                             ></i>
                                         </Button>
                                     </div>
+=======
+                                    class="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-2 text-center sm:gap-2"
+                                >
+                                    <Button
+                                        @click="onBtPrevious(greenhouse.id)"
+                                        :disabled="!canPrevPage(greenhouse.id)"
+                                    >
+                                        <i class="fas fa-angle-left"></i>
+                                    </Button>
+                                    <span
+                                        class="min-w-[92px] text-center text-xs font-medium text-gray-700 sm:text-sm"
+                                    >
+                                        {{ getPaginationText(greenhouse.id) }}
+                                    </span>
+                                    <Button
+                                        @click="onBtNext(greenhouse.id)"
+                                        :disabled="!canNextPage(greenhouse.id)"
+                                    >
+                                        <i class="fas fa-angle-right"></i>
+                                    </Button>
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
                                 </div>
                             </div>
                         </div>

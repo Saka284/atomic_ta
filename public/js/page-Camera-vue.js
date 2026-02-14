@@ -620,13 +620,35 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
     // data
     var rowDataMap = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({});
     var rowImageMap = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({});
+<<<<<<< HEAD
     var paginationStateMap = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({});
+=======
+    var paginationMetaMap = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({});
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
     var rowImageLoadingTimers = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({});
     var isComponentAlive = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)(true);
     var loadedGreenhouseMap = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({});
     var cameraRequestTokens = new Map();
     var cameraFetchControllers = new Map();
     var CAMERA_PER_PAGE_OPTIONS = [5, 10, 20, 50, 100];
+<<<<<<< HEAD
+=======
+    var cameraPageMap = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({});
+    var sharedPerPage = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)(DEFAULT_CAMERA_PER_PAGE);
+    var getGreenhouseLabel = function getGreenhouseLabel(greenhouse) {
+      var label = String((greenhouse === null || greenhouse === void 0 ? void 0 : greenhouse.name) || "").trim();
+      var ghId = Number(greenhouse === null || greenhouse === void 0 ? void 0 : greenhouse.id);
+      var fallbackNumber = Number.isFinite(ghId) && ghId > 0 ? ghId : null;
+      var normalized = label.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+      var labelNumberMatch = normalized.match(/(\d+)$/);
+      var labelNumber = labelNumberMatch ? Number(labelNumberMatch[1]) : null;
+      var tabNumber = labelNumber !== null && labelNumber !== void 0 ? labelNumber : fallbackNumber;
+      return Number.isFinite(tabNumber) && tabNumber > 0 ? "GH Von Florist ".concat(tabNumber) : "GH Von Florist";
+    };
+    var getCameraLabel = function getCameraLabel(index) {
+      return "".concat(t("monitoring.camera"), " ").concat(index + 1);
+    };
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
     var abortCameraFetch = function abortCameraFetch(gh_id) {
       var controller = cameraFetchControllers.get(gh_id);
       if (!controller) {
@@ -641,15 +663,22 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
       });
       cameraFetchControllers.clear();
     };
+<<<<<<< HEAD
     var ensurePaginationState = function ensurePaginationState(gh_id) {
       if (!paginationStateMap.value[gh_id]) {
         paginationStateMap.value[gh_id] = {
           page: 1,
           perPage: DEFAULT_CAMERA_PER_PAGE,
+=======
+    var ensurePaginationMeta = function ensurePaginationMeta(gh_id) {
+      if (!paginationMetaMap.value[gh_id]) {
+        paginationMetaMap.value[gh_id] = {
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
           total: 0,
           lastPage: 1
         };
       }
+<<<<<<< HEAD
       return paginationStateMap.value[gh_id];
     };
     var getPaginationText = function getPaginationText(gh_id) {
@@ -708,11 +737,110 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
       state.perPage = Number.isFinite(parsedPerPage) && parsedPerPage > 0 ? parsedPerPage : DEFAULT_CAMERA_PER_PAGE;
       state.page = 1;
       fetchData(gh_id, {
+=======
+      return paginationMetaMap.value[gh_id];
+    };
+    var ensureCameraPage = function ensureCameraPage(gh_id) {
+      if (!cameraPageMap.value[gh_id]) {
+        cameraPageMap.value[gh_id] = 1;
+      }
+      return cameraPageMap.value[gh_id];
+    };
+    var getCurrentPage = function getCurrentPage(gh_id) {
+      return ensureCameraPage(gh_id);
+    };
+    var getCameraLastPage = function getCameraLastPage(gh_id) {
+      var meta = ensurePaginationMeta(gh_id);
+      return Math.max(1, Number(meta.lastPage || 1));
+    };
+    var globalLastPage = (0,vue__WEBPACK_IMPORTED_MODULE_0__.computed)(function () {
+      var greenhouseList = Array.isArray(greenhouses) ? greenhouses : [];
+      if (greenhouseList.length === 0) {
+        return 1;
+      }
+      var maxLastPage = greenhouseList.reduce(function (maxValue, greenhouse) {
+        var meta = ensurePaginationMeta(greenhouse.id);
+        return Math.max(maxValue, Number(meta.lastPage || 1));
+      }, 1);
+      return Math.max(1, maxLastPage);
+    });
+    var getPaginationText = function getPaginationText(gh_id) {
+      var meta = ensurePaginationMeta(gh_id);
+      if (meta.total <= 0) {
+        return t("camera.page_no_data");
+      }
+      return "".concat(getCurrentPage(gh_id), " ").concat(t("common.of"), " ").concat(globalLastPage.value);
+    };
+    var canPrevPage = function canPrevPage(gh_id) {
+      return getCurrentPage(gh_id) > 1;
+    };
+    var canNextPage = function canNextPage(gh_id) {
+      return getCurrentPage(gh_id) < getCameraLastPage(gh_id);
+    };
+    var fetchAllGreenhouses = /*#__PURE__*/function () {
+      var _ref2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
+        var _ref3,
+          _ref3$force,
+          force,
+          greenhouseList,
+          jobs,
+          _args = arguments;
+        return _regenerator().w(function (_context) {
+          while (1) switch (_context.n) {
+            case 0:
+              _ref3 = _args.length > 0 && _args[0] !== undefined ? _args[0] : {}, _ref3$force = _ref3.force, force = _ref3$force === void 0 ? false : _ref3$force;
+              greenhouseList = Array.isArray(greenhouses) ? greenhouses : [];
+              jobs = greenhouseList.map(function (greenhouse) {
+                return _fetchData(greenhouse.id, {
+                  force: force
+                });
+              });
+              _context.n = 1;
+              return Promise.all(jobs);
+            case 1:
+              return _context.a(2);
+          }
+        }, _callee);
+      }));
+      return function fetchAllGreenhouses() {
+        return _ref2.apply(this, arguments);
+      };
+    }();
+    var goToPage = function goToPage(gh_id, nextPage) {
+      var parsedGhId = Number(gh_id);
+      if (!Number.isFinite(parsedGhId) || parsedGhId <= 0) {
+        return;
+      }
+      var clampedPage = Math.max(1, Math.min(nextPage, getCameraLastPage(parsedGhId)));
+      if (clampedPage === getCurrentPage(parsedGhId)) {
+        return;
+      }
+      cameraPageMap.value[parsedGhId] = clampedPage;
+      _fetchData(parsedGhId, {
+        force: true
+      });
+    };
+    var onBtNext = function onBtNext(gh_id) {
+      goToPage(gh_id, getCurrentPage(gh_id) + 1);
+    };
+    var onBtPrevious = function onBtPrevious(gh_id) {
+      goToPage(gh_id, getCurrentPage(gh_id) - 1);
+    };
+    var onPerPageChange = function onPerPageChange(value) {
+      var parsedPerPage = Number(value);
+      sharedPerPage.value = Number.isFinite(parsedPerPage) && parsedPerPage > 0 ? parsedPerPage : DEFAULT_CAMERA_PER_PAGE;
+      var greenhouseList = Array.isArray(greenhouses) ? greenhouses : [];
+      greenhouseList.forEach(function (greenhouse) {
+        cameraPageMap.value[greenhouse.id] = 1;
+      });
+      fetchAllGreenhouses({
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
         force: true
       });
     };
 
     // fetch data table
+<<<<<<< HEAD
     var fetchData = /*#__PURE__*/function () {
       var _ref2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(gh_id) {
         var _ref3,
@@ -720,6 +848,14 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
           force,
           parsedGhId,
           state,
+=======
+    var _fetchData = /*#__PURE__*/function () {
+      var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(gh_id) {
+        var _ref5,
+          _ref5$force,
+          force,
+          parsedGhId,
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
           requestToken,
           controller,
           queryData,
@@ -728,6 +864,7 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
           jsonData,
           _rowImageMap$value$pa,
           nextPreview,
+<<<<<<< HEAD
           _args = arguments,
           _t;
         return _regenerator().w(function (_context) {
@@ -748,21 +885,58 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
               return _context.a(2);
             case 2:
               state = ensurePaginationState(parsedGhId);
+=======
+          meta,
+          maxPage,
+          _args2 = arguments,
+          _t;
+        return _regenerator().w(function (_context2) {
+          while (1) switch (_context2.p = _context2.n) {
+            case 0:
+              _ref5 = _args2.length > 1 && _args2[1] !== undefined ? _args2[1] : {}, _ref5$force = _ref5.force, force = _ref5$force === void 0 ? false : _ref5$force;
+              parsedGhId = Number(gh_id);
+              if (!(!Number.isFinite(parsedGhId) || parsedGhId <= 0)) {
+                _context2.n = 1;
+                break;
+              }
+              return _context2.a(2);
+            case 1:
+              if (!(!force && loadedGreenhouseMap.value[parsedGhId] && Array.isArray(rowDataMap.value[parsedGhId]))) {
+                _context2.n = 2;
+                break;
+              }
+              return _context2.a(2);
+            case 2:
+              ensurePaginationMeta(parsedGhId);
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
               requestToken = (cameraRequestTokens.get(parsedGhId) || 0) + 1;
               cameraRequestTokens.set(parsedGhId, requestToken);
               abortCameraFetch(parsedGhId);
               controller = null;
+<<<<<<< HEAD
               _context.p = 3;
               rowTableLoading.value[parsedGhId] = true;
               queryData = {
                 gh_id: parsedGhId,
                 page: state.page,
                 per_page: state.perPage
+=======
+              _context2.p = 3;
+              rowTableLoading.value[parsedGhId] = true;
+              queryData = {
+                gh_id: parsedGhId,
+                page: getCurrentPage(parsedGhId),
+                per_page: sharedPerPage.value
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
               };
               url = "/api/camera-per-gh?dict=" + encodeURIComponent(JSON.stringify(queryData));
               controller = new AbortController();
               cameraFetchControllers.set(parsedGhId, controller);
+<<<<<<< HEAD
               _context.n = 4;
+=======
+              _context2.n = 4;
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
               return fetch(url, {
                 method: "GET",
                 headers: {
@@ -771,6 +945,7 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
                 signal: controller.signal
               });
             case 4:
+<<<<<<< HEAD
               response = _context.v;
               _context.n = 5;
               return response.json();
@@ -813,12 +988,75 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
               rowImageLoading.value[parsedGhId] = false;
             case 9:
               _context.p = 9;
+=======
+              response = _context2.v;
+              _context2.n = 5;
+              return response.json();
+            case 5:
+              jsonData = _context2.v;
+              if (!(!isComponentAlive.value || cameraRequestTokens.get(parsedGhId) !== requestToken)) {
+                _context2.n = 6;
+                break;
+              }
+              return _context2.a(2);
+            case 6:
+              if (!Array.isArray(jsonData.data)) {
+                _context2.n = 9;
+                break;
+              }
+              nextPreview = jsonData.data[0] || null;
+              if (((_rowImageMap$value$pa = rowImageMap.value[parsedGhId]) === null || _rowImageMap$value$pa === void 0 ? void 0 : _rowImageMap$value$pa.image) !== (nextPreview === null || nextPreview === void 0 ? void 0 : nextPreview.image)) {
+                rowImageLoading.value[parsedGhId] = Boolean(nextPreview);
+              }
+              rowDataMap.value[parsedGhId] = jsonData.data;
+              rowImageMap.value[parsedGhId] = nextPreview;
+              meta = ensurePaginationMeta(parsedGhId);
+              meta.total = Number(jsonData.total || 0);
+              meta.lastPage = Number(jsonData.last_page || 1);
+              loadedGreenhouseMap.value[parsedGhId] = true;
+              maxPage = getCameraLastPage(parsedGhId);
+              if (!(getCurrentPage(parsedGhId) > maxPage)) {
+                _context2.n = 8;
+                break;
+              }
+              cameraPageMap.value[parsedGhId] = maxPage;
+              _context2.n = 7;
+              return _fetchData(parsedGhId, {
+                force: true
+              });
+            case 7:
+              return _context2.a(2);
+            case 8:
+              _context2.n = 10;
+              break;
+            case 9:
+              toast.error(t("camera.failed_load_data"));
+              console.error("Data format error: Expected array", jsonData);
+            case 10:
+              _context2.n = 13;
+              break;
+            case 11:
+              _context2.p = 11;
+              _t = _context2.v;
+              if (!(!isComponentAlive.value || (_t === null || _t === void 0 ? void 0 : _t.name) === "AbortError")) {
+                _context2.n = 12;
+                break;
+              }
+              return _context2.a(2);
+            case 12:
+              toast.error(t("camera.failed_load_data"));
+              console.error("Fetch error:", _t);
+              rowImageLoading.value[parsedGhId] = false;
+            case 13:
+              _context2.p = 13;
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
               if (controller && cameraFetchControllers.get(parsedGhId) === controller) {
                 cameraFetchControllers["delete"](parsedGhId);
               }
               if (cameraRequestTokens.get(parsedGhId) === requestToken) {
                 rowTableLoading.value[parsedGhId] = false;
               }
+<<<<<<< HEAD
               return _context.f(9);
             case 10:
               return _context.a(2);
@@ -846,26 +1084,55 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
       (greenhouses || []).forEach(function (greenhouse) {
         loadGreenhouseDataIfNeeded(greenhouse.id);
       });
+=======
+              return _context2.f(13);
+            case 14:
+              return _context2.a(2);
+          }
+        }, _callee2, null, [[3, 11, 13, 14]]);
+      }));
+      return function fetchData(_x) {
+        return _ref4.apply(this, arguments);
+      };
+    }();
+    (0,vue__WEBPACK_IMPORTED_MODULE_0__.onMounted)(function () {
+      fetchAllGreenhouses();
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
     });
     var formatDate = function formatDate(date) {
       return new Date(date).toISOString().split("T")[0];
     };
     var exportData = /*#__PURE__*/function () {
+<<<<<<< HEAD
       var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
         var payload, response, blob, url, a, filePrefix, _t2;
         return _regenerator().w(function (_context2) {
           while (1) switch (_context2.p = _context2.n) {
+=======
+      var _ref6 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
+        var payload, response, blob, url, a, filePrefix, _t2;
+        return _regenerator().w(function (_context3) {
+          while (1) switch (_context3.p = _context3.n) {
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
             case 0:
               isExporting.value = true;
 
               // 1. Cek tanggal
               if (daterange.value) {
+<<<<<<< HEAD
                 _context2.n = 1;
+=======
+                _context3.n = 1;
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
                 break;
               }
               toast.warning(t("camera.date_range_required"));
               isExporting.value = false;
+<<<<<<< HEAD
               return _context2.a(2);
+=======
+              return _context3.a(2);
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
             case 1:
               // 2. Siapkan Payload
               payload = {
@@ -873,13 +1140,22 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
                 end_date: formatDate(daterange.value[1]),
                 gh_id: selectedGreenhouse.value
               };
+<<<<<<< HEAD
               _context2.p = 2;
               _context2.n = 3;
+=======
+              _context3.p = 2;
+              _context3.n = 3;
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
               return axios.post("/api/export-camera", payload, {
                 responseType: "blob" // PENTING: Response berupa file binary
               });
             case 3:
+<<<<<<< HEAD
               response = _context2.v;
+=======
+              response = _context3.v;
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
               // 4. Proses Download
               blob = new Blob([response.data], {
                 type: response.headers["content-type"] // Ambil tipe file dari server
@@ -894,11 +1170,19 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
               document.body.removeChild(a);
               toast.success(t("camera.zip_downloaded"));
               isExporting.value = false;
+<<<<<<< HEAD
               _context2.n = 5;
               break;
             case 4:
               _context2.p = 4;
               _t2 = _context2.v;
+=======
+              _context3.n = 5;
+              break;
+            case 4:
+              _context3.p = 4;
+              _t2 = _context3.v;
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
               console.error(_t2);
               if (_t2.response && _t2.response.status === 404) {
                 toast.error(t("camera.no_data_selected_range"));
@@ -907,12 +1191,21 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
               }
               isExporting.value = false;
             case 5:
+<<<<<<< HEAD
               return _context2.a(2);
           }
         }, _callee2, null, [[2, 4]]);
       }));
       return function exportData() {
         return _ref5.apply(this, arguments);
+=======
+              return _context3.a(2);
+          }
+        }, _callee3, null, [[2, 4]]);
+      }));
+      return function exportData() {
+        return _ref6.apply(this, arguments);
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
       };
     }();
     var onRowSelected = function onRowSelected(event, gh_id) {
@@ -966,7 +1259,11 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
       rowClassRules: rowClassRules,
       rowDataMap: rowDataMap,
       rowImageMap: rowImageMap,
+<<<<<<< HEAD
       paginationStateMap: paginationStateMap,
+=======
+      paginationMetaMap: paginationMetaMap,
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
       rowImageLoadingTimers: rowImageLoadingTimers,
       isComponentAlive: isComponentAlive,
       loadedGreenhouseMap: loadedGreenhouseMap,
@@ -974,6 +1271,7 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
       cameraFetchControllers: cameraFetchControllers,
       DEFAULT_CAMERA_PER_PAGE: DEFAULT_CAMERA_PER_PAGE,
       CAMERA_PER_PAGE_OPTIONS: CAMERA_PER_PAGE_OPTIONS,
+<<<<<<< HEAD
       abortCameraFetch: abortCameraFetch,
       abortAllCameraFetches: abortAllCameraFetches,
       ensurePaginationState: ensurePaginationState,
@@ -989,6 +1287,28 @@ var DEFAULT_CAMERA_PER_PAGE = 5;
       onPerPageChange: onPerPageChange,
       fetchData: fetchData,
       loadGreenhouseDataIfNeeded: loadGreenhouseDataIfNeeded,
+=======
+      cameraPageMap: cameraPageMap,
+      sharedPerPage: sharedPerPage,
+      getGreenhouseLabel: getGreenhouseLabel,
+      getCameraLabel: getCameraLabel,
+      abortCameraFetch: abortCameraFetch,
+      abortAllCameraFetches: abortAllCameraFetches,
+      ensurePaginationMeta: ensurePaginationMeta,
+      ensureCameraPage: ensureCameraPage,
+      getCurrentPage: getCurrentPage,
+      getCameraLastPage: getCameraLastPage,
+      globalLastPage: globalLastPage,
+      getPaginationText: getPaginationText,
+      canPrevPage: canPrevPage,
+      canNextPage: canNextPage,
+      fetchAllGreenhouses: fetchAllGreenhouses,
+      goToPage: goToPage,
+      onBtNext: onBtNext,
+      onBtPrevious: onBtPrevious,
+      onPerPageChange: onPerPageChange,
+      fetchData: _fetchData,
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
       formatDate: formatDate,
       exportData: exportData,
       onRowSelected: onRowSelected,
@@ -1474,6 +1794,7 @@ var _hoisted_22 = {
   "class": "text-sm text-gray-500"
 };
 var _hoisted_23 = {
+<<<<<<< HEAD
   "class": "flex flex-col lg:flex-row gap-2"
 };
 var _hoisted_24 = {
@@ -1547,6 +1868,78 @@ var _hoisted_47 = {
 };
 var _hoisted_48 = {
   "class": "order-2 ml-auto flex gap-2 sm:order-none sm:ml-0"
+=======
+  "class": "mb-2 flex flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-center"
+};
+var _hoisted_24 = {
+  "class": "flex w-full items-center justify-center gap-2 sm:w-auto"
+};
+var _hoisted_25 = {
+  "class": "text-xs font-medium text-gray-500"
+};
+var _hoisted_26 = ["value"];
+var _hoisted_27 = ["value"];
+var _hoisted_28 = {
+  "class": "text-xs font-medium text-gray-500"
+};
+var _hoisted_29 = {
+  "class": "flex flex-col lg:flex-row gap-2"
+};
+var _hoisted_30 = {
+  "class": "mb-4 flex w-full flex-col items-center gap-2 text-center md:flex-row md:items-center md:justify-between md:text-left"
+};
+var _hoisted_31 = {
+  "class": "flex flex-col"
+};
+var _hoisted_32 = {
+  "class": "text-lg font-semibold leading-tight"
+};
+var _hoisted_33 = {
+  "class": "text-xs font-medium uppercase tracking-wide text-gray-500"
+};
+var _hoisted_34 = {
+  "class": "flex flex-col items-center md:items-end"
+};
+var _hoisted_35 = {
+  key: 0,
+  "class": "px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm"
+};
+var _hoisted_36 = {
+  "class": "text-xs font-bold"
+};
+var _hoisted_37 = {
+  "class": "flex flex-col gap-4 w-full"
+};
+var _hoisted_38 = {
+  "class": "p-3 border rounded-lg flex justify-center items-center w-full h-[300px]"
+};
+var _hoisted_39 = {
+  key: 0,
+  "class": "flex justify-center items-center"
+};
+var _hoisted_40 = ["src", "alt", "onLoad", "onError"];
+var _hoisted_41 = {
+  "class": "flex flex-col gap-2"
+};
+var _hoisted_42 = {
+  "class": "relative"
+};
+var _hoisted_43 = {
+  key: 0,
+  "class": "absolute inset-0 z-10 flex items-center justify-center bg-white/80"
+};
+var _hoisted_44 = {
+  "class": "flex flex-col items-center gap-3"
+};
+var _hoisted_45 = {
+  "class": "font-medium text-gray-600"
+};
+var _hoisted_46 = {
+  "class": "flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-2 text-center sm:gap-2"
+};
+var _hoisted_47 = {
+  "class": "min-w-[92px] text-center text-xs font-medium text-gray-700 sm:text-sm"
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 };
 function render(_ctx, _cache, $props, $setup, $data, $options) {
   return (0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)(vue__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createVNode)($setup["Head"], {
@@ -1592,12 +1985,32 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
         }, null, 2 /* CLASS */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_20, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("p", _hoisted_21, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(actuator.name), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("p", _hoisted_22, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("camera.status")), 1 /* TEXT */)])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", {
           "class": (0,vue__WEBPACK_IMPORTED_MODULE_0__.normalizeClass)([actuator.status ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700', "px-3 py-1 text-xs font-bold rounded-full"])
         }, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(actuator.status ? $setup.t("monitoring.on") : $setup.t("monitoring.off")), 3 /* TEXT, CLASS */)])]);
+<<<<<<< HEAD
       }), 128 /* KEYED_FRAGMENT */))]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_23, [((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(true), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)(vue__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.renderList)($setup.greenhouses, function (greenhouse) {
         var _$setup$rowImageMap$g, _$setup$rowImageMap$g2, _$setup$rowImageMap$g3, _$setup$rowImageMap$g4, _$setup$paginationSta;
         return (0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)("div", {
           key: greenhouse.id,
           "class": "bg-white overflow-hidden shadow-sm rounded-lg p-4 w-full"
         }, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_24, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("p", _hoisted_25, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("monitoring.camera")) + " " + (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(greenhouse.name), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_26, [((_$setup$rowImageMap$g = $setup.rowImageMap[greenhouse.id]) === null || _$setup$rowImageMap$g === void 0 ? void 0 : _$setup$rowImageMap$g.fog_percentage) !== null && ((_$setup$rowImageMap$g2 = $setup.rowImageMap[greenhouse.id]) === null || _$setup$rowImageMap$g2 === void 0 ? void 0 : _$setup$rowImageMap$g2.fog_percentage) !== undefined ? ((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)("div", _hoisted_27, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_28, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("camera.accuracy")) + ": " + (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)((_$setup$rowImageMap$g3 = $setup.rowImageMap[greenhouse.id]) === null || _$setup$rowImageMap$g3 === void 0 ? void 0 : _$setup$rowImageMap$g3.fog_percentage) + "% ", 1 /* TEXT */)])) : (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)("v-if", true)])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_29, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_30, [$setup.rowImageLoading[greenhouse.id] ? ((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)("div", _hoisted_31, _toConsumableArray(_cache[2] || (_cache[2] = [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("i", {
+=======
+      }), 128 /* KEYED_FRAGMENT */))]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_23, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_24, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_25, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("camera.show")), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("select", {
+        value: $setup.sharedPerPage,
+        "class": "h-8 rounded border border-gray-300 px-2 text-sm",
+        onChange: _cache[2] || (_cache[2] = function ($event) {
+          return $setup.onPerPageChange($event.target.value);
+        })
+      }, [((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)(vue__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.renderList)($setup.CAMERA_PER_PAGE_OPTIONS, function (option) {
+        return (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("option", {
+          key: "shared-per-page-".concat(option),
+          value: option
+        }, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(option), 9 /* TEXT, PROPS */, _hoisted_27);
+      }), 64 /* STABLE_FRAGMENT */))], 40 /* PROPS, NEED_HYDRATION */, _hoisted_26), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_28, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("camera.per_page")), 1 /* TEXT */)])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_29, [((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(true), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)(vue__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.renderList)($setup.greenhouses, function (greenhouse, index) {
+        var _$setup$rowImageMap$g, _$setup$rowImageMap$g2, _$setup$rowImageMap$g3, _$setup$rowImageMap$g4;
+        return (0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)("div", {
+          key: greenhouse.id,
+          "class": "bg-white overflow-hidden shadow-sm rounded-lg p-4 w-full"
+        }, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_30, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_31, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("p", _hoisted_32, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.getCameraLabel(index)), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("p", _hoisted_33, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.getGreenhouseLabel(greenhouse)), 1 /* TEXT */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_34, [((_$setup$rowImageMap$g = $setup.rowImageMap[greenhouse.id]) === null || _$setup$rowImageMap$g === void 0 ? void 0 : _$setup$rowImageMap$g.fog_percentage) !== null && ((_$setup$rowImageMap$g2 = $setup.rowImageMap[greenhouse.id]) === null || _$setup$rowImageMap$g2 === void 0 ? void 0 : _$setup$rowImageMap$g2.fog_percentage) !== undefined ? ((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)("div", _hoisted_35, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_36, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("camera.accuracy")) + ": " + (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)((_$setup$rowImageMap$g3 = $setup.rowImageMap[greenhouse.id]) === null || _$setup$rowImageMap$g3 === void 0 ? void 0 : _$setup$rowImageMap$g3.fog_percentage) + "% ", 1 /* TEXT */)])) : (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)("v-if", true)])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_37, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_38, [$setup.rowImageLoading[greenhouse.id] ? ((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)("div", _hoisted_39, _toConsumableArray(_cache[3] || (_cache[3] = [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("i", {
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
           "class": "fas fa-spinner fa-spin text-gray-400 text-3xl"
         }, null, -1 /* CACHED */)])))) : ((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)("img", {
           key: 1,
@@ -1611,9 +2024,15 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
             e.target.src = '/images/no-image.svg';
             $setup.rowImageLoading[greenhouse.id] = false;
           }
+<<<<<<< HEAD
         }, null, 40 /* PROPS, NEED_HYDRATION */, _hoisted_32))]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_33, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_34, [$setup.rowTableLoading[greenhouse.id] ? ((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)("div", _hoisted_35, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_36, [_cache[3] || (_cache[3] = (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", {
           "class": "h-10 w-10 animate-spin rounded-full border-b-2 border-indigo-600"
         }, null, -1 /* CACHED */)), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_37, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("table.loading_data")), 1 /* TEXT */)])])) : (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)("v-if", true), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createVNode)($setup["AgGridVue"], {
+=======
+        }, null, 40 /* PROPS, NEED_HYDRATION */, _hoisted_40))]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_41, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_42, [$setup.rowTableLoading[greenhouse.id] ? ((0,vue__WEBPACK_IMPORTED_MODULE_0__.openBlock)(), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementBlock)("div", _hoisted_43, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_44, [_cache[4] || (_cache[4] = (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", {
+          "class": "h-10 w-10 animate-spin rounded-full border-b-2 border-indigo-600"
+        }, null, -1 /* CACHED */)), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_45, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("table.loading_data")), 1 /* TEXT */)])])) : (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)("v-if", true), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createVNode)($setup["AgGridVue"], {
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
           "class": "camera-grid",
           rowData: $setup.rowDataMap[greenhouse.id] || [],
           columnDefs: $setup.columnDefs,
@@ -1626,6 +2045,7 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
             return $setup.onRowSelected(event, greenhouse.id);
           },
           theme: $setup.themeAlpine
+<<<<<<< HEAD
         }, null, 8 /* PROPS */, ["rowData", "columnDefs", "rowClassRules", "onRowSelected", "theme"])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_38, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_39, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_40, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("camera.show")), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("select", {
           value: ((_$setup$paginationSta = $setup.paginationStateMap[greenhouse.id]) === null || _$setup$paginationSta === void 0 ? void 0 : _$setup$paginationSta.perPage) || $setup.DEFAULT_CAMERA_PER_PAGE,
           "class": "h-8 rounded border border-gray-300 px-2 text-sm",
@@ -1650,6 +2070,9 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
           }),
           _: 1 /* STABLE */
         }, 8 /* PROPS */, ["onClick", "disabled"]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createVNode)($setup["Button"], {
+=======
+        }, null, 8 /* PROPS */, ["rowData", "columnDefs", "rowClassRules", "onRowSelected", "theme"])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_46, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createVNode)($setup["Button"], {
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
           onClick: function onClick($event) {
             return $setup.onBtPrevious(greenhouse.id);
           },
@@ -1661,7 +2084,11 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
             }, null, -1 /* CACHED */)]));
           }),
           _: 1 /* STABLE */
+<<<<<<< HEAD
         }, 8 /* PROPS */, ["onClick", "disabled"])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_45, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_46, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.getShowingText(greenhouse.id)), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_47, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.getPaginationText(greenhouse.id)), 1 /* TEXT */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_48, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createVNode)($setup["Button"], {
+=======
+        }, 8 /* PROPS */, ["onClick", "disabled"]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_47, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.getPaginationText(greenhouse.id)), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createVNode)($setup["Button"], {
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
           onClick: function onClick($event) {
             return $setup.onBtNext(greenhouse.id);
           },
@@ -1673,6 +2100,7 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
             }, null, -1 /* CACHED */)]));
           }),
           _: 1 /* STABLE */
+<<<<<<< HEAD
         }, 8 /* PROPS */, ["onClick", "disabled"]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createVNode)($setup["Button"], {
           onClick: function onClick($event) {
             return $setup.onBtLast(greenhouse.id);
@@ -1687,6 +2115,9 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
           }),
           _: 1 /* STABLE */
         }, 8 /* PROPS */, ["onClick", "disabled"])])])])])]);
+=======
+        }, 8 /* PROPS */, ["onClick", "disabled"])])])])]);
+>>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
       }), 128 /* KEYED_FRAGMENT */))])])])];
     }),
     _: 1 /* STABLE */

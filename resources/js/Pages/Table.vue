@@ -35,6 +35,7 @@ const columnFilters = ref({});
 const responseCache = new Map();
 const CACHE_TTL_MS = 30000;
 const CACHE_LIMIT = 40;
+const gridApi = ref(null);
 let activeAbortController = null;
 let latestRequestId = 0;
 
@@ -244,6 +245,9 @@ const debouncedFetchData = debounce(() => {
     currentPage.value = 1; // Reset to page 1 on filter change
     fetchData();
 }, 300);
+const debouncedColumnFilterFetch = debounce(() => {
+    fetchData({ force: true });
+}, 250);
 
 // Pagination controls
 const goToFirst = () => { currentPage.value = 1; fetchData(); };
@@ -274,16 +278,23 @@ const onSortChanged = (params) => {
     fetchData({ force: true });
 };
 
+const onGridReady = (params) => {
+    gridApi.value = params.api;
+};
+
 const onFilterChanged = (params) => {
     columnFilters.value = params.api.getFilterModel() || {};
     currentPage.value = 1;
-    fetchData({ force: true });
+    debouncedColumnFilterFetch();
 };
 
 // On tab switch, reset everything and fetch
 watch(activeTab, () => {
     currentPage.value = 1;
     columnFilters.value = {};
+    if (gridApi.value) {
+        gridApi.value.setFilterModel(null);
+    }
     debouncedFetchData();
 });
 
@@ -299,6 +310,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     debouncedFetchData.cancel();
+    debouncedColumnFilterFetch.cancel();
     if (activeAbortController) {
         activeAbortController.abort();
     }
