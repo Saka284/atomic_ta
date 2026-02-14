@@ -30,6 +30,8 @@ const CHART_CACHE_TTL_MS = 60000;
 const CHART_CACHE_LIMIT = 200;
 const chartMode = ref({});
 const chartRange = ref({});
+const mobileFilterOpen = ref({});
+const mobileRangeOpen = ref({});
 const chartAbortControllers = new Map();
 const chartRequestTokens = new Map();
 
@@ -254,6 +256,14 @@ const setChartRange = (sensor_id, range) => {
 
 const isChartRangeActive = (sensor_id, range) =>
     getChartRange(sensor_id) === range;
+
+const getChartRangeLabel = (sensor_id) => {
+    return (
+        chartRangeOptions.value.find(
+            (option) => option.value === getChartRange(sensor_id)
+        )?.label || t("monitoring.range_custom")
+    );
+};
 
 const setCustomRangeFromDatePicker = (sensor_id) => {
     if (getChartRange(sensor_id) !== "custom") {
@@ -648,8 +658,43 @@ const selectedGHSensor = computed(() => {
     return sensors;
 });
 
+const isMobileFilterOpen = (sensor_id) =>
+    Boolean(mobileFilterOpen.value[sensor_id]);
+
+const toggleMobileFilter = (sensor_id) => {
+    mobileFilterOpen.value[sensor_id] = !isMobileFilterOpen(sensor_id);
+};
+
+const closeAllMobileFilters = () => {
+    mobileFilterOpen.value = {};
+};
+
+const isMobileRangeOpen = (sensor_id) => Boolean(mobileRangeOpen.value[sensor_id]);
+
+const toggleMobileRange = (sensor_id) => {
+    mobileRangeOpen.value[sensor_id] = !isMobileRangeOpen(sensor_id);
+};
+
+const closeMobileRange = (sensor_id) => {
+    mobileRangeOpen.value[sensor_id] = false;
+};
+
+const closeAllMobileRanges = () => {
+    mobileRangeOpen.value = {};
+};
+
+const selectMobileRange = (sensor_id, range) => {
+    setChartRange(sensor_id, range);
+    closeMobileRange(sensor_id);
+};
+
 const filterChart = (sensor_id) => {
     fetchData(sensor_id);
+};
+
+const applyMobileFilter = (sensor_id) => {
+    filterChart(sensor_id);
+    mobileFilterOpen.value[sensor_id] = false;
 };
 
 watch(greenhouses, (value) => {
@@ -676,6 +721,8 @@ watch(activeTab, async (newTab) => {
         return;
     }
 
+    closeAllMobileFilters();
+    closeAllMobileRanges();
     abortAllChartRequests();
 
     if (!data.value[newTab]) {
@@ -792,20 +839,255 @@ onBeforeUnmount(() => {
                         <div
                             class="bg-white shadow-sm rounded-lg w-full lg:w-3/4 p-4"
                         >
-                            <div
-                                class="mb-2 flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between"
-                            >
-                                <h3 class="text-xl">
-                                    {{ getSensorLabel(sensor.name) }}
-                                </h3>
+                            <div class="mb-2">
+                                <div class="flex items-center justify-between gap-2">
+                                    <h3 class="text-xl">
+                                        {{ getSensorLabel(sensor.name) }}
+                                    </h3>
 
-                                <div class="w-full lg:w-auto">
+                                    <div class="relative sm:hidden">
+                                        <button
+                                            type="button"
+                                            class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-3 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-sky-600"
+                                            @click="
+                                                toggleMobileFilter(
+                                                    sensor.sensor_id
+                                                )
+                                            "
+                                        >
+                                            <i class="fas fa-filter"></i>
+                                            <span>{{ t("monitoring.filter") }}</span>
+                                        </button>
+
+                                        <div
+                                            v-if="
+                                                isMobileFilterOpen(
+                                                    sensor.sensor_id
+                                                )
+                                            "
+                                            class="absolute right-0 top-12 z-30 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-xl"
+                                        >
+                                            <div class="flex flex-col gap-2">
+                                                <select
+                                                    class="h-10 w-full rounded-md border px-3 text-sm"
+                                                    :value="
+                                                        getChartMode(
+                                                            sensor.sensor_id
+                                                        )
+                                                    "
+                                                    @change="
+                                                        setChartMode(
+                                                            sensor.sensor_id,
+                                                            $event.target.value
+                                                        )
+                                                    "
+                                                >
+                                                    <option value="avg">
+                                                        {{ t("monitoring.average") }}
+                                                    </option>
+                                                    <option value="per_node">
+                                                        {{ t("monitoring.per_node") }}
+                                                    </option>
+                                                </select>
+
+                                                <VueDatePicker
+                                                    class="monitoring-date-picker w-full"
+                                                    v-model="
+                                                        getDateTime(
+                                                            sensor.sensor_id
+                                                        ).date
+                                                    "
+                                                    range
+                                                    position="right"
+                                                    :locale="datePickerLocale"
+                                                    :placeholder="
+                                                        t('monitoring.date')
+                                                    "
+                                                    :format="
+                                                        formatDateRangeDisplay
+                                                    "
+                                                    :enable-time-picker="false"
+                                                    :teleport="true"
+                                                    @update:model-value="
+                                                        setCustomRangeFromDatePicker(
+                                                            sensor.sensor_id
+                                                        )
+                                                    "
+                                                />
+
+                                                <div
+                                                    class="relative flex w-full items-center"
+                                                >
+                                                    <select
+                                                        class="h-10 w-full rounded-md border px-3 text-sm"
+                                                        v-model="
+                                                            getDateTime(
+                                                                sensor.sensor_id
+                                                            ).time
+                                                        "
+                                                        :disabled="
+                                                            isTimeFilterDisabled(
+                                                                sensor.sensor_id
+                                                            )
+                                                        "
+                                                        :class="{
+                                                            'cursor-not-allowed bg-gray-200 text-gray-500':
+                                                                isTimeFilterDisabled(
+                                                                    sensor.sensor_id
+                                                                ),
+                                                        }"
+                                                    >
+                                                        <option value="">
+                                                            {{
+                                                                t(
+                                                                    'monitoring.hour'
+                                                                )
+                                                            }}
+                                                        </option>
+                                                        <option
+                                                            v-for="hour in 24"
+                                                            :key="hour"
+                                                            :value="
+                                                                formatHour(
+                                                                    hour - 1
+                                                                )
+                                                            "
+                                                        >
+                                                            {{
+                                                                formatHour(
+                                                                    hour - 1
+                                                                )
+                                                            }}
+                                                        </option>
+                                                    </select>
+                                                    <button
+                                                        v-if="
+                                                            getDateTime(
+                                                                sensor.sensor_id
+                                                            ).time &&
+                                                            !isQuickRangeActive(
+                                                                sensor.sensor_id
+                                                            )
+                                                        "
+                                                        @click="
+                                                            clearTime(
+                                                                sensor.sensor_id
+                                                            )
+                                                        "
+                                                        class="absolute right-3 text-gray-500 hover:text-gray-700"
+                                                    >
+                                                        <i
+                                                            class="fas fa-times"
+                                                        ></i>
+                                                    </button>
+                                                </div>
+
+                                                <Button
+                                                    :disabled="
+                                                        isFetching[
+                                                            sensor.sensor_id
+                                                        ]
+                                                    "
+                                                    @click="
+                                                        applyMobileFilter(
+                                                            sensor.sensor_id
+                                                        )
+                                                    "
+                                                    class="h-10 w-full justify-center gap-2 px-3"
+                                                >
+                                                    <i
+                                                        :class="[
+                                                            isFetching[
+                                                                sensor.sensor_id
+                                                            ]
+                                                                ? 'fas fa-spinner fa-spin'
+                                                                : 'fas fa-search',
+                                                        ]"
+                                                    ></i>
+                                                    <span>
+                                                        {{
+                                                            t(
+                                                                'monitoring.search'
+                                                            )
+                                                        }}
+                                                    </span>
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-2 sm:hidden">
+                                    <div class="relative">
+                                        <button
+                                            type="button"
+                                            class="flex h-10 w-full items-center justify-between rounded-md border px-3 text-sm"
+                                            @click="
+                                                toggleMobileRange(
+                                                    sensor.sensor_id
+                                                )
+                                            "
+                                        >
+                                            <span>{{
+                                                getChartRangeLabel(
+                                                    sensor.sensor_id
+                                                )
+                                            }}</span>
+                                            <i
+                                                class="fas fa-chevron-down text-xs transition-transform"
+                                                :class="{
+                                                    'rotate-180':
+                                                        isMobileRangeOpen(
+                                                            sensor.sensor_id
+                                                        ),
+                                                }"
+                                            ></i>
+                                        </button>
+
+                                        <div
+                                            v-if="
+                                                isMobileRangeOpen(
+                                                    sensor.sensor_id
+                                                )
+                                            "
+                                            class="absolute left-0 right-0 top-11 z-20 overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg"
+                                        >
+                                            <button
+                                                v-for="option in chartRangeOptions"
+                                                :key="
+                                                    `mobile-outside-${sensor.sensor_id}-${option.value}`
+                                                "
+                                                type="button"
+                                                class="block w-full px-3 py-2 text-left text-sm transition"
+                                                :class="
+                                                    isChartRangeActive(
+                                                        sensor.sensor_id,
+                                                        option.value
+                                                    )
+                                                        ? 'bg-sky-500 text-white'
+                                                        : 'text-gray-700 hover:bg-gray-100'
+                                                "
+                                                @click="
+                                                    selectMobileRange(
+                                                        sensor.sensor_id,
+                                                        option.value
+                                                    )
+                                                "
+                                            >
+                                                {{ option.label }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-2 hidden w-full lg:w-auto sm:block">
                                     <div
-                                        class="flex min-w-max items-center gap-2 overflow-x-auto pb-1"
+                                        class="flex flex-col gap-2 pb-1 sm:flex-row sm:flex-wrap sm:items-center"
                                     >
                                         <div
-                                            class="inline-flex h-10 items-center rounded-md border border-gray-300 bg-white p-1"
+                                            class="w-full overflow-x-auto rounded-md border border-gray-300 bg-white p-1 sm:w-auto"
                                         >
+                                            <div class="inline-flex h-8 items-center">
                                             <button
                                                 v-for="option in chartRangeOptions"
                                                 :key="
@@ -830,10 +1112,11 @@ onBeforeUnmount(() => {
                                             >
                                                 {{ option.label }}
                                             </button>
+                                            </div>
                                         </div>
 
                                         <select
-                                            class="h-10 min-w-[145px] shrink-0 rounded-md border px-3 text-sm"
+                                            class="h-10 w-full rounded-md border px-3 text-sm sm:min-w-[145px] sm:w-auto"
                                             :value="getChartMode(sensor.sensor_id)"
                                             @change="
                                                 setChartMode(
@@ -851,8 +1134,7 @@ onBeforeUnmount(() => {
                                         </select>
 
                                         <VueDatePicker
-                                            class="monitoring-date-picker shrink-0"
-                                            style="width: 128px; min-width: 128px"
+                                            class="monitoring-date-picker w-full sm:w-[128px]"
                                             v-model="
                                                 getDateTime(sensor.sensor_id)
                                                     .date
@@ -872,7 +1154,7 @@ onBeforeUnmount(() => {
                                         />
 
                                         <div
-                                            class="relative min-w-[120px] shrink-0 flex items-center"
+                                            class="relative flex w-full items-center sm:min-w-[120px] sm:w-[120px]"
                                         >
                                             <select
                                                 class="h-10 w-full rounded-md border px-3 text-sm"
@@ -931,7 +1213,7 @@ onBeforeUnmount(() => {
                                             @click="
                                                 filterChart(sensor.sensor_id)
                                             "
-                                            class="h-10 shrink-0 px-3"
+                                            class="h-10 w-full px-3 sm:w-auto sm:shrink-0"
                                         >
                                             <i
                                                 :class="[
@@ -1027,12 +1309,25 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+:deep(.monitoring-date-picker) {
+    width: 100%;
+    min-width: 0;
+}
+
 :deep(.monitoring-date-picker .dp__input) {
+    width: 100%;
     min-height: 2.5rem;
     height: 2.5rem;
     padding-right: 0.5rem;
     padding-left: 2rem;
     font-size: 0.875rem;
+}
+
+@media (min-width: 640px) {
+    :deep(.monitoring-date-picker) {
+        width: 128px;
+        min-width: 128px;
+    }
 }
 
 .actuator-fan-active {
