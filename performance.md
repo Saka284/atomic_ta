@@ -24,7 +24,8 @@ Fitur *game-changer* di Inertia v2 adalah **Prefetching**.
 Benchmark berjalan di CI dan bisa dijalankan lokal untuk semua endpoint penting.
 
 ```bash
-php artisan migrate:fresh --seed --seeder=BenchmarkSeeder
+php artisan migrate --force
+php artisan db:seed --class=BenchmarkSeeder --force
 php artisan bench:endpoints --output=benchmarks/current.json --fail-on-threshold
 php scripts/bench_compare.php --current=benchmarks/current.json --baseline=benchmarks/baseline.json
 ```
