@@ -31,6 +31,7 @@ const totalRows = ref(0);
 const lastPage = ref(1);
 const sortField = ref("recorded_at");
 const sortDirection = ref("desc");
+const columnFilters = ref({});
 const responseCache = new Map();
 const CACHE_TTL_MS = 30000;
 const CACHE_LIMIT = 40;
@@ -54,7 +55,7 @@ const columnDefs = computed(() => [
     {
         headerName: t("table.node"),
         field: "node_id",
-        filter: false,
+        filter: "agNumberColumnFilter",
         sortable: true,
         minWidth: 80,
         maxWidth: 90,
@@ -62,42 +63,42 @@ const columnDefs = computed(() => [
     {
         headerName: t("table.date"),
         field: "date",
-        filter: false,
+        filter: "agTextColumnFilter",
         sortable: true,
         minWidth: 120,
     },
     {
         headerName: t("table.time"),
         field: "time",
-        filter: false,
+        filter: "agTextColumnFilter",
         sortable: true,
         minWidth: 100,
     },
     {
         headerName: t("table.temperature"),
         field: "temperature",
-        filter: false,
+        filter: "agNumberColumnFilter",
         sortable: true,
         minWidth: 150,
     },
     {
         headerName: t("table.humidity"),
         field: "humidity",
-        filter: false,
+        filter: "agNumberColumnFilter",
         sortable: true,
         minWidth: 130,
     },
     {
         headerName: t("table.light_intensity"),
         field: "light_intensity",
-        filter: false,
+        filter: "agNumberColumnFilter",
         sortable: true,
         minWidth: 160,
     },
     {
         headerName: t("table.rssi"),
         field: "rssi",
-        filter: false,
+        filter: "agNumberColumnFilter",
         sortable: true,
         minWidth: 120,
     },
@@ -105,9 +106,9 @@ const columnDefs = computed(() => [
 const defaultColDef = ref({
     flex: 1,
     minWidth: 100,
+    filter: true,
     resizable: false,
     suppressMovable: true,
-    suppressHeaderMenuButton: true,
 });
 
 // Computed display values
@@ -130,6 +131,10 @@ const buildQueryData = () => {
 
     if (selectedNode.value) {
         queryData.node_id = selectedNode.value;
+    }
+
+    if (Object.keys(columnFilters.value).length > 0) {
+        queryData.column_filters = columnFilters.value;
     }
 
     return queryData;
@@ -269,9 +274,16 @@ const onSortChanged = (params) => {
     fetchData({ force: true });
 };
 
+const onFilterChanged = (params) => {
+    columnFilters.value = params.api.getFilterModel() || {};
+    currentPage.value = 1;
+    fetchData({ force: true });
+};
+
 // On tab switch, reset everything and fetch
 watch(activeTab, () => {
     currentPage.value = 1;
+    columnFilters.value = {};
     debouncedFetchData();
 });
 
@@ -426,8 +438,10 @@ const exportData = async () => {
                             :defaultColDef="defaultColDef"
                             :domLayout="'autoHeight'"
                             :theme="themeAlpine"
+                            :suppressMenuHide="true"
                             :suppressPaginationPanel="true"
                             @sort-changed="onSortChanged"
+                            @filter-changed="onFilterChanged"
                         >
                         </ag-grid-vue>
                     </div>

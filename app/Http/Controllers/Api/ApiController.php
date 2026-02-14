@@ -664,6 +664,9 @@ class ApiController extends Controller
         $nodeId = isset($decodedData['node_id']) && $decodedData['node_id'] !== ''
             ? (int) $decodedData['node_id']
             : null;
+        $columnFilters = is_array($decodedData['column_filters'] ?? null)
+            ? $decodedData['column_filters']
+            : [];
 
         if (($startTime && !$endTime) || (!$startTime && $endTime)) {
             return response()->json(['success' => false, 'message' => 'Both start_date and end_date are required.'], 422);
@@ -730,18 +733,162 @@ class ApiController extends Controller
             $sensorIdMap['rssi'],
         ], $filterParams);
 
+        $columnExprMap = [
+            'node_id' => 'grouped.node_id',
+            'date' => 'DATE(grouped.recorded_at)',
+            'time' => 'TIME(grouped.recorded_at)',
+            'temperature' => 'grouped.temperature',
+            'humidity' => 'grouped.humidity',
+            'light_intensity' => 'grouped.light_intensity',
+            'rssi' => 'grouped.rssi',
+        ];
+        $numericFilterColumns = [
+            'node_id',
+            'temperature',
+            'humidity',
+            'light_intensity',
+            'rssi',
+        ];
+
+        $buildCondition = function (string $expr, array $condition, bool $isNumeric): ?array {
+            $type = (string) ($condition['type'] ?? 'equals');
+            $filterValue = $condition['filter'] ?? null;
+            $filterTo = $condition['filterTo'] ?? null;
+
+            if ($isNumeric) {
+                switch ($type) {
+                    case 'equals':
+                        if ($filterValue === null || $filterValue === '') return null;
+                        return ['sql' => "{$expr} = ?", 'params' => [$filterValue]];
+                    case 'notEqual':
+                        if ($filterValue === null || $filterValue === '') return null;
+                        return ['sql' => "{$expr} != ?", 'params' => [$filterValue]];
+                    case 'greaterThan':
+                        if ($filterValue === null || $filterValue === '') return null;
+                        return ['sql' => "{$expr} > ?", 'params' => [$filterValue]];
+                    case 'greaterThanOrEqual':
+                        if ($filterValue === null || $filterValue === '') return null;
+                        return ['sql' => "{$expr} >= ?", 'params' => [$filterValue]];
+                    case 'lessThan':
+                        if ($filterValue === null || $filterValue === '') return null;
+                        return ['sql' => "{$expr} < ?", 'params' => [$filterValue]];
+                    case 'lessThanOrEqual':
+                        if ($filterValue === null || $filterValue === '') return null;
+                        return ['sql' => "{$expr} <= ?", 'params' => [$filterValue]];
+                    case 'inRange':
+                        if ($filterValue === null || $filterValue === '' || $filterTo === null || $filterTo === '') {
+                            return null;
+                        }
+                        return ['sql' => "({$expr} >= ? AND {$expr} <= ?)", 'params' => [$filterValue, $filterTo]];
+                    case 'blank':
+                        return ['sql' => "{$expr} IS NULL", 'params' => []];
+                    case 'notBlank':
+                        return ['sql' => "{$expr} IS NOT NULL", 'params' => []];
+                    default:
+                        return null;
+                }
+            }
+
+            $stringExpr = "LOWER(CAST({$expr} AS CHAR))";
+            $textValue = $filterValue !== null ? strtolower((string) $filterValue) : null;
+
+            switch ($type) {
+                case 'contains':
+                    if ($textValue === null || $textValue === '') return null;
+                    return ['sql' => "{$stringExpr} LIKE ?", 'params' => ["%{$textValue}%"]];
+                case 'notContains':
+                    if ($textValue === null || $textValue === '') return null;
+                    return ['sql' => "({$stringExpr} NOT LIKE ? OR {$expr} IS NULL)", 'params' => ["%{$textValue}%"]];
+                case 'startsWith':
+                    if ($textValue === null || $textValue === '') return null;
+                    return ['sql' => "{$stringExpr} LIKE ?", 'params' => ["{$textValue}%"]];
+                case 'endsWith':
+                    if ($textValue === null || $textValue === '') return null;
+                    return ['sql' => "{$stringExpr} LIKE ?", 'params' => ["%{$textValue}"]];
+                case 'equals':
+                    if ($textValue === null || $textValue === '') return null;
+                    return ['sql' => "{$stringExpr} = ?", 'params' => [$textValue]];
+                case 'notEqual':
+                    if ($textValue === null || $textValue === '') return null;
+                    return ['sql' => "({$stringExpr} != ? OR {$expr} IS NULL)", 'params' => [$textValue]];
+                case 'blank':
+                    return ['sql' => "({$expr} IS NULL OR CAST({$expr} AS CHAR) = '')", 'params' => []];
+                case 'notBlank':
+                    return ['sql' => "({$expr} IS NOT NULL AND CAST({$expr} AS CHAR) != '')", 'params' => []];
+                default:
+                    return null;
+            }
+        };
+
+        $columnFilterClauses = [];
+        $columnFilterParams = [];
+
+        foreach ($columnFilters as $columnKey => $filterDef) {
+            if (!isset($columnExprMap[$columnKey]) || !is_array($filterDef)) {
+                continue;
+            }
+
+            $expr = $columnExprMap[$columnKey];
+            $isNumeric = in_array($columnKey, $numericFilterColumns, true);
+            $operator = strtoupper((string) ($filterDef['operator'] ?? 'AND'));
+            $joinOperator = $operator === 'OR' ? ' OR ' : ' AND ';
+
+            $conditions = [];
+            if (isset($filterDef['conditions']) && is_array($filterDef['conditions'])) {
+                $conditions = $filterDef['conditions'];
+            } elseif (isset($filterDef['condition1']) || isset($filterDef['condition2'])) {
+                if (isset($filterDef['condition1']) && is_array($filterDef['condition1'])) {
+                    $conditions[] = $filterDef['condition1'];
+                }
+                if (isset($filterDef['condition2']) && is_array($filterDef['condition2'])) {
+                    $conditions[] = $filterDef['condition2'];
+                }
+            } else {
+                $conditions[] = $filterDef;
+            }
+
+            $perColumnSql = [];
+            $perColumnParams = [];
+            foreach ($conditions as $condition) {
+                if (!is_array($condition)) {
+                    continue;
+                }
+
+                $built = $buildCondition($expr, $condition, $isNumeric);
+                if (!$built) {
+                    continue;
+                }
+
+                $perColumnSql[] = $built['sql'];
+                $perColumnParams = array_merge($perColumnParams, $built['params']);
+            }
+
+            if (empty($perColumnSql)) {
+                continue;
+            }
+
+            $columnFilterClauses[] = '(' . implode($joinOperator, $perColumnSql) . ')';
+            $columnFilterParams = array_merge($columnFilterParams, $perColumnParams);
+        }
+
+        $columnFilterWhereSql = '';
+        if (!empty($columnFilterClauses)) {
+            $columnFilterWhereSql = 'WHERE ' . implode(' AND ', $columnFilterClauses);
+        }
+
         $countKeyPayload = [
             'gh_id' => $gh_id,
             'sensor_ids' => $inIds,
             'start_date' => $startTime,
             'end_date' => $endTime,
             'node_id' => $nodeId,
+            'column_filters' => $columnFilters,
         ];
         $countCacheKey = 'table_count_' . md5(json_encode($countKeyPayload));
 
-        $total = Cache::remember($countCacheKey, 60, function () use ($aggregationSql, $aggregationParams) {
-            $countSql = "SELECT COUNT(*) as total FROM ($aggregationSql) as cnt";
-            $totalResult = DB::selectOne($countSql, $aggregationParams);
+        $total = Cache::remember($countCacheKey, 60, function () use ($aggregationSql, $aggregationParams, $columnFilterWhereSql, $columnFilterParams) {
+            $countSql = "SELECT COUNT(*) as total FROM ($aggregationSql) as grouped {$columnFilterWhereSql}";
+            $totalResult = DB::selectOne($countSql, array_merge($aggregationParams, $columnFilterParams));
             return (int) ($totalResult->total ?? 0);
         });
 
@@ -753,7 +900,7 @@ class ApiController extends Controller
             'sort_direction' => $sortDirection,
         ]));
 
-        $payload = Cache::remember($pageCacheKey, 60, function () use ($aggregationSql, $aggregationParams, $orderBySql, $perPage, $offset, $page, $total) {
+        $payload = Cache::remember($pageCacheKey, 60, function () use ($aggregationSql, $aggregationParams, $columnFilterWhereSql, $columnFilterParams, $orderBySql, $perPage, $offset, $page, $total) {
             $dataSql = "
                 SELECT
                     grouped.node_id,
@@ -764,11 +911,12 @@ class ApiController extends Controller
                     grouped.light_intensity,
                     grouped.rssi
                 FROM ($aggregationSql) as grouped
+                {$columnFilterWhereSql}
                 ORDER BY $orderBySql
                 LIMIT ? OFFSET ?
             ";
 
-            $dataParams = array_merge($aggregationParams, [$perPage, $offset]);
+            $dataParams = array_merge($aggregationParams, $columnFilterParams, [$perPage, $offset]);
             $sensorData = DB::select($dataSql, $dataParams);
             $lastPage = max(1, (int) ceil($total / $perPage));
 

@@ -753,9 +753,11 @@ onUnmounted(() => {
                                     </ag-grid-vue>
                                 </div>
                                 <div
-                                    class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                                    class="flex flex-wrap items-center gap-2 sm:flex-row sm:items-center sm:justify-between"
                                 >
-                                    <div class="flex items-center gap-2">
+                                    <div
+                                        class="order-1 flex w-full items-center justify-center gap-2 sm:order-none sm:w-auto sm:justify-start"
+                                    >
                                         <span
                                             class="text-xs font-medium text-gray-500"
                                             >{{ t("camera.show") }}</span
@@ -789,7 +791,7 @@ onUnmounted(() => {
                                         >
                                     </div>
 
-                                    <div class="flex gap-2">
+                                    <div class="order-2 flex gap-2 sm:order-none">
                                         <Button
                                             @click="
                                                 onBtFirst(greenhouse.id)
@@ -819,7 +821,7 @@ onUnmounted(() => {
                                             <i class="fas fa-angle-left"></i>
                                         </Button>
                                     </div>
-                                    <div class="text-center">
+                                    <div class="order-2 min-w-0 flex-1 text-center sm:order-none sm:w-auto sm:flex-none">
                                         <span
                                             class="block text-sm font-medium text-gray-700"
                                             >{{
@@ -836,7 +838,9 @@ onUnmounted(() => {
                                             }}</span
                                         >
                                     </div>
-                                    <div class="flex gap-2">
+                                    <div
+                                        class="order-2 ml-auto flex gap-2 sm:order-none sm:ml-0"
+                                    >
                                         <Button
                                             @click="onBtNext(greenhouse.id)"
                                             :disabled="
