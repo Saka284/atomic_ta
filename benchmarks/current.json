@@ -1,0 +1,78 @@
+{
+    "meta": {
+        "timestamp": "2026-02-13T23:09:32+07:00",
+        "iterations": 20,
+        "warmup": 3,
+        "cold": false,
+        "php": "8.4.14",
+        "env": "local",
+        "dataset": {
+            "greenhouses": 2,
+            "nodes_per_gh": 5,
+            "rows_per_node": 300,
+            "camera_rows": 120
+        }
+    },
+    "endpoints": {
+        "monitoring": {
+            "iterations": 20,
+            "min_ms": 0.5669593811035156,
+            "p50_ms": 0.5872249603271484,
+            "p95_ms": 4.574060440063477,
+            "avg_ms": 2.935791015625,
+            "max_ms": 42.550086975097656,
+            "rps": 340.6,
+            "cold_ms": null,
+            "threshold_ms": 800,
+            "threshold_ok": true
+        },
+        "table": {
+            "iterations": 20,
+            "min_ms": 0.6008148193359375,
+            "p50_ms": 0.6661415100097656,
+            "p95_ms": 93.60504150390625,
+            "avg_ms": 15.557515621185303,
+            "max_ms": 189.95404243469238,
+            "rps": 64.3,
+            "cold_ms": null,
+            "threshold_ms": 900,
+            "threshold_ok": true
+        },
+        "camera": {
+            "iterations": 20,
+            "min_ms": 0.5960464477539062,
+            "p50_ms": 0.6189346313476562,
+            "p95_ms": 0.7932186126708984,
+            "avg_ms": 0.6651163101196289,
+            "max_ms": 1.1332035064697266,
+            "rps": 1503.5,
+            "cold_ms": null,
+            "threshold_ms": 800,
+            "threshold_ok": true
+        },
+        "controlling": {
+            "iterations": 20,
+            "min_ms": 0.03886222839355469,
+            "p50_ms": 0.0400543212890625,
+            "p95_ms": 0.1621246337890625,
+            "avg_ms": 0.0630497932434082,
+            "max_ms": 0.2391338348388672,
+            "rps": 15860.5,
+            "cold_ms": null,
+            "threshold_ms": 900,
+            "threshold_ok": true
+        },
+        "heatmap": {
+            "iterations": 20,
+            "min_ms": 1.2769699096679688,
+            "p50_ms": 1.4450550079345703,
+            "p95_ms": 2.249002456665039,
+            "avg_ms": 1.5964984893798828,
+            "max_ms": 2.4771690368652344,
+            "rps": 626.4,
+            "cold_ms": null,
+            "threshold_ms": 1400,
+            "threshold_ok": true
+        }
+    }
+}

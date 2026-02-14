@@ -96,8 +96,15 @@ if (!file_exists($worktreeDir . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPAR
 // Ensure app key exists
 $run('php artisan key:generate --force', $worktreeDir);
 
-// Prepare DB and run benchmark
-$exit = $run('php artisan migrate:fresh --seed --seeder=BenchmarkSeeder', $worktreeDir);
+// Prepare DB and run benchmark (non-destructive migration flow)
+$exit = $run('php artisan migrate --force', $worktreeDir);
+if ($exit !== 0) {
+    fwrite(STDERR, "Benchmark migration failed in baseline worktree.\n");
+    $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
+    exit($exit);
+}
+
+$exit = $run('php artisan db:seed --class=BenchmarkSeeder --force', $worktreeDir);
 if ($exit !== 0) {
     fwrite(STDERR, "Benchmark seeding failed in baseline worktree.\n");
     $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);

@@ -5,7 +5,8 @@ In CI, baseline is generated automatically from the compared base commit/worktre
 
 ## Generate baseline (manual/local)
 ```bash
-php artisan migrate:fresh --seed --seeder=BenchmarkSeeder
+php artisan migrate --force
+php artisan db:seed --class=BenchmarkSeeder --force
 php artisan bench:endpoints --output=benchmarks/baseline.json --fail-on-threshold
 ```
 
@@ -16,7 +17,8 @@ php scripts/bench_prepare_baseline.php --ref=origin/main --output=benchmarks/bas
 
 ## Run current benchmark (local)
 ```bash
-php artisan migrate:fresh --seed --seeder=BenchmarkSeeder
+php artisan migrate --force
+php artisan db:seed --class=BenchmarkSeeder --force
 php artisan bench:endpoints --output=benchmarks/current.json --fail-on-threshold
 php scripts/bench_compare.php --current=benchmarks/current.json --baseline=benchmarks/baseline.json
 ```
