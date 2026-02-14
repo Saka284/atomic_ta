@@ -62,19 +62,33 @@ const safeActiveIndex = computed(() => {
 const getGreenhouseLabel = (greenhouse) => {
     const label = String(greenhouse?.name || "").trim();
     const ghId = Number(greenhouse?.id);
-    const defaultLabel = Number.isFinite(ghId) && ghId > 0
-        ? `GH Von Florist ${ghId}`
-        : "GH Von Florist";
+    const fallbackNumber = Number.isFinite(ghId) && ghId > 0 ? ghId : null;
 
-    if (label) {
-        const normalized = label.toLowerCase().replace(/\s+/g, " ").trim();
-        if (/^gh\s*\d+$/.test(normalized) || /^greenhouse\s*\d+$/.test(normalized)) {
-            return defaultLabel;
-        }
+    const normalized = label
+        .toLowerCase()
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
 
-        return label;
+    const labelNumberMatch = normalized.match(/(\d+)$/);
+    const labelNumber = labelNumberMatch ? Number(labelNumberMatch[1]) : null;
+    const tabNumber = labelNumber ?? fallbackNumber;
+    const defaultLabel = Number.isFinite(tabNumber) && tabNumber > 0
+        ? `GH VONFLORIST ${tabNumber}`
+        : "GH VONFLORIST";
+
+    // Normalisasi semua variasi nama default greenhouse agar label tab konsisten
+    const shouldUseDefaultLabel =
+        !label ||
+        /^gh\s*\d+$/.test(normalized) ||
+        /^greenhouse\s*\d+$/.test(normalized) ||
+        /^gh\s*von\s*florist\s*\d+$/.test(normalized) ||
+        /^gh\s*vonflorist\s*\d+$/.test(normalized);
+
+    if (shouldUseDefaultLabel) {
+        return defaultLabel;
     }
 
-    return defaultLabel;
+    return label;
 };
 </script>
