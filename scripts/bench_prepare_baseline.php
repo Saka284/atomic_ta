@@ -7,13 +7,11 @@ $options = getopt('', [
     'ref::',
     'output::',
     'force',
-    'fail-on-threshold',
 ]);
 
 $ref = $options['ref'] ?? 'origin/main';
 $output = $options['output'] ?? 'benchmarks/baseline.json';
 $force = array_key_exists('force', $options);
-$failOnThreshold = array_key_exists('fail-on-threshold', $options);
 
 if (file_exists($output) && !$force) {
     fwrite(STDOUT, "Baseline already exists: {$output}\n");
@@ -96,15 +94,8 @@ if (!file_exists($worktreeDir . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPAR
 // Ensure app key exists
 $run('php artisan key:generate --force', $worktreeDir);
 
-// Prepare DB and run benchmark (non-destructive migration flow)
-$exit = $run('php artisan migrate --force', $worktreeDir);
-if ($exit !== 0) {
-    fwrite(STDERR, "Benchmark migration failed in baseline worktree.\n");
-    $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
-    exit($exit);
-}
-
-$exit = $run('php artisan db:seed --class=BenchmarkSeeder --force', $worktreeDir);
+// Prepare DB and run benchmark
+$exit = $run('php artisan migrate:fresh --seed --seeder=BenchmarkSeeder', $worktreeDir);
 if ($exit !== 0) {
     fwrite(STDERR, "Benchmark seeding failed in baseline worktree.\n");
     $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
@@ -112,12 +103,7 @@ if ($exit !== 0) {
 }
 
 $outputAbs = $root . DIRECTORY_SEPARATOR . $output;
-$benchCmd = 'php artisan bench:endpoints --output=' . escapeshellarg($outputAbs);
-if ($failOnThreshold) {
-    $benchCmd .= ' --fail-on-threshold';
-}
-
-$exit = $run($benchCmd, $worktreeDir);
+$exit = $run('php artisan bench:endpoints --output=' . escapeshellarg($outputAbs) . ' --fail-on-threshold', $worktreeDir);
 if ($exit !== 0) {
     fwrite(STDERR, "Benchmark run failed in baseline worktree.\n");
     $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);

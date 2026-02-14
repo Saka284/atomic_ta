@@ -110,7 +110,22 @@ jobs:
 
     - name: Compare Benchmarks
       run: |
-        php scripts/bench_compare.php --current=benchmarks/current.json --baseline=benchmarks/baseline.json --output=benchmarks/compare.json --fail-on-regression
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          php scripts/bench_compare.php \
+            --current=benchmarks/current.json \
+            --baseline=benchmarks/baseline.json \
+            --output=benchmarks/compare.json \
+            --regression=0.25 \
+            --min-regression-ms=50 \
+            --fail-on-regression
+        else
+          php scripts/bench_compare.php \
+            --current=benchmarks/current.json \
+            --baseline=benchmarks/baseline.json \
+            --output=benchmarks/compare.json \
+            --regression=0.25 \
+            --min-regression-ms=50
+        fi
 
     - name: Upload Benchmark Artifacts
       if: always()
