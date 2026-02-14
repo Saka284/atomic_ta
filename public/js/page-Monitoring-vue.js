@@ -765,11 +765,7 @@ __webpack_require__.r(__webpack_exports__);
       var labelNumberMatch = normalized.match(/(\d+)$/);
       var labelNumber = labelNumberMatch ? Number(labelNumberMatch[1]) : null;
       var tabNumber = labelNumber !== null && labelNumber !== void 0 ? labelNumber : fallbackNumber;
-<<<<<<< HEAD
-      var defaultLabel = Number.isFinite(tabNumber) && tabNumber > 0 ? "GH VONFLORIST ".concat(tabNumber) : "GH VONFLORIST";
-=======
       var defaultLabel = Number.isFinite(tabNumber) && tabNumber > 0 ? "GH Von Florist ".concat(tabNumber) : "GH Von Florist";
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 
       // Normalisasi semua variasi nama default greenhouse agar label tab konsisten
       var shouldUseDefaultLabel = !label || /^gh\s*\d+$/.test(normalized) || /^greenhouse\s*\d+$/.test(normalized) || /^gh\s*von\s*florist\s*\d+$/.test(normalized) || /^gh\s*vonflorist\s*\d+$/.test(normalized);
@@ -3068,11 +3064,7 @@ __webpack_require__.r(__webpack_exports__);
 
 var ___CSS_LOADER_EXPORT___ = _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0___default()(function(i){return i[1]});
 // Module
-<<<<<<< HEAD
 ___CSS_LOADER_EXPORT___.push([module.id, "\n[data-v-4917729e] .monitoring-date-picker {\n    width: 100%;\n    min-width: 0;\n}\n[data-v-4917729e] .monitoring-date-picker .dp__input {\n    width: 100%;\n    min-height: 2.5rem;\n    height: 2.5rem;\n    padding-right: 0.5rem;\n    padding-left: 2rem;\n    font-size: 0.875rem;\n}\n@media (min-width: 640px) {\n[data-v-4917729e] .monitoring-date-picker {\n        width: 128px;\n        min-width: 128px;\n}\n}\n.actuator-fan-active[data-v-4917729e] {\r\n    animation: actuator-fan-spin-4917729e 1.5s linear infinite;\r\n    transform-origin: 50% 50%;\n}\n.actuator-dehumidifier-active[data-v-4917729e] {\r\n    animation: actuator-dehumidifier-pulse-4917729e 1.7s ease-in-out infinite;\r\n    transform-origin: 50% 50%;\n}\n@keyframes actuator-fan-spin-4917729e {\nfrom {\r\n        transform: rotate(0deg);\n}\nto {\r\n        transform: rotate(360deg);\n}\n}\n@keyframes actuator-dehumidifier-pulse-4917729e {\n0%,\r\n    100% {\r\n        transform: translateY(0) scale(1);\r\n        opacity: 1;\n}\n50% {\r\n        transform: translateY(-2px) scale(1.08);\r\n        opacity: 0.82;\n}\n}\r\n", ""]);
-=======
-___CSS_LOADER_EXPORT___.push([module.id, "\n[data-v-4917729e] .monitoring-date-picker {\r\n    width: 100%;\r\n    min-width: 0;\n}\n[data-v-4917729e] .monitoring-date-picker .dp__input {\r\n    width: 100%;\r\n    min-height: 2.5rem;\r\n    height: 2.5rem;\r\n    padding-right: 0.5rem;\r\n    padding-left: 2rem;\r\n    font-size: 0.875rem;\n}\n@media (min-width: 640px) {\n[data-v-4917729e] .monitoring-date-picker {\r\n        width: 128px;\r\n        min-width: 128px;\n}\n}\n.actuator-fan-active[data-v-4917729e] {\r\n    animation: actuator-fan-spin-4917729e 1.5s linear infinite;\r\n    transform-origin: 50% 50%;\n}\n.actuator-dehumidifier-active[data-v-4917729e] {\r\n    animation: actuator-dehumidifier-pulse-4917729e 1.7s ease-in-out infinite;\r\n    transform-origin: 50% 50%;\n}\n@keyframes actuator-fan-spin-4917729e {\nfrom {\r\n        transform: rotate(0deg);\n}\nto {\r\n        transform: rotate(360deg);\n}\n}\n@keyframes actuator-dehumidifier-pulse-4917729e {\n0%,\r\n    100% {\r\n        transform: translateY(0) scale(1);\r\n        opacity: 1;\n}\n50% {\r\n        transform: translateY(-2px) scale(1.08);\r\n        opacity: 0.82;\n}\n}\r\n", ""]);
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 // Exports
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
 

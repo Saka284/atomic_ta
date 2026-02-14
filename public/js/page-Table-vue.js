@@ -232,11 +232,7 @@ __webpack_require__.r(__webpack_exports__);
       var labelNumberMatch = normalized.match(/(\d+)$/);
       var labelNumber = labelNumberMatch ? Number(labelNumberMatch[1]) : null;
       var tabNumber = labelNumber !== null && labelNumber !== void 0 ? labelNumber : fallbackNumber;
-<<<<<<< HEAD
-      var defaultLabel = Number.isFinite(tabNumber) && tabNumber > 0 ? "GH VONFLORIST ".concat(tabNumber) : "GH VONFLORIST";
-=======
       var defaultLabel = Number.isFinite(tabNumber) && tabNumber > 0 ? "GH Von Florist ".concat(tabNumber) : "GH Von Florist";
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 
       // Normalisasi semua variasi nama default greenhouse agar label tab konsisten
       var shouldUseDefaultLabel = !label || /^gh\s*\d+$/.test(normalized) || /^greenhouse\s*\d+$/.test(normalized) || /^gh\s*von\s*florist\s*\d+$/.test(normalized) || /^gh\s*vonflorist\s*\d+$/.test(normalized);
@@ -454,10 +450,7 @@ var CACHE_LIMIT = 40;
     var sortDirection = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)("desc");
     var columnFilters = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)({});
     var responseCache = new Map();
-<<<<<<< HEAD
-=======
     var gridApi = (0,vue__WEBPACK_IMPORTED_MODULE_0__.ref)(null);
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
     var activeAbortController = null;
     var latestRequestId = 0;
     var columnDefs = (0,vue__WEBPACK_IMPORTED_MODULE_0__.computed)(function () {
@@ -690,14 +683,11 @@ var CACHE_LIMIT = 40;
       currentPage.value = 1; // Reset to page 1 on filter change
       fetchData();
     }, 300);
-<<<<<<< HEAD
-=======
     var debouncedColumnFilterFetch = (0,lodash__WEBPACK_IMPORTED_MODULE_1__.debounce)(function () {
       fetchData({
         force: true
       });
     }, 250);
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 
     // Pagination controls
     var goToFirst = function goToFirst() {
@@ -741,14 +731,6 @@ var CACHE_LIMIT = 40;
         force: true
       });
     };
-<<<<<<< HEAD
-    var onFilterChanged = function onFilterChanged(params) {
-      columnFilters.value = params.api.getFilterModel() || {};
-      currentPage.value = 1;
-      fetchData({
-        force: true
-      });
-=======
     var onGridReady = function onGridReady(params) {
       gridApi.value = params.api;
     };
@@ -756,19 +738,15 @@ var CACHE_LIMIT = 40;
       columnFilters.value = params.api.getFilterModel() || {};
       currentPage.value = 1;
       debouncedColumnFilterFetch();
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
     };
 
     // On tab switch, reset everything and fetch
     (0,vue__WEBPACK_IMPORTED_MODULE_0__.watch)(activeTab, function () {
       currentPage.value = 1;
       columnFilters.value = {};
-<<<<<<< HEAD
-=======
       if (gridApi.value) {
         gridApi.value.setFilterModel(null);
       }
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
       debouncedFetchData();
     });
 
@@ -783,10 +761,7 @@ var CACHE_LIMIT = 40;
     });
     (0,vue__WEBPACK_IMPORTED_MODULE_0__.onBeforeUnmount)(function () {
       debouncedFetchData.cancel();
-<<<<<<< HEAD
-=======
       debouncedColumnFilterFetch.cancel();
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
       if (activeAbortController) {
         activeAbortController.abort();
       }
@@ -873,10 +848,7 @@ var CACHE_LIMIT = 40;
       responseCache: responseCache,
       CACHE_TTL_MS: CACHE_TTL_MS,
       CACHE_LIMIT: CACHE_LIMIT,
-<<<<<<< HEAD
-=======
       gridApi: gridApi,
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
       get activeAbortController() {
         return activeAbortController;
       },
@@ -900,20 +872,14 @@ var CACHE_LIMIT = 40;
       setCachedPayload: setCachedPayload,
       fetchData: fetchData,
       debouncedFetchData: debouncedFetchData,
-<<<<<<< HEAD
-=======
       debouncedColumnFilterFetch: debouncedColumnFilterFetch,
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
       goToFirst: goToFirst,
       goToPrev: goToPrev,
       goToNext: goToNext,
       goToLast: goToLast,
       onPerPageChange: onPerPageChange,
       onSortChanged: onSortChanged,
-<<<<<<< HEAD
-=======
       onGridReady: onGridReady,
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
       onFilterChanged: onFilterChanged,
       formatDate: formatDate,
       exportData: exportData,
@@ -1464,10 +1430,6 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
         theme: $setup.themeAlpine,
         suppressMenuHide: true,
         suppressPaginationPanel: true,
-<<<<<<< HEAD
-=======
-        onGridReady: $setup.onGridReady,
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
         onSortChanged: $setup.onSortChanged,
         onFilterChanged: $setup.onFilterChanged
       }, null, 8 /* PROPS */, ["rowData", "columnDefs", "defaultColDef", "theme"])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" Custom Pagination "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_20, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" Page Size Selector "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_21, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.withDirectives)((0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("select", {

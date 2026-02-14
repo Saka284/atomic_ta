@@ -209,11 +209,7 @@ const rowClassRules = ref({
 // data
 const rowDataMap = ref({});
 const rowImageMap = ref({});
-<<<<<<< HEAD
-const paginationStateMap = ref({});
-=======
 const paginationMetaMap = ref({});
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 const rowImageLoadingTimers = ref({});
 const isComponentAlive = ref(true);
 const loadedGreenhouseMap = ref({});
@@ -222,109 +218,6 @@ const cameraFetchControllers = new Map();
 
 const DEFAULT_CAMERA_PER_PAGE = 5;
 const CAMERA_PER_PAGE_OPTIONS = [5, 10, 20, 50, 100];
-<<<<<<< HEAD
-
-const abortCameraFetch = (gh_id) => {
-    const controller = cameraFetchControllers.get(gh_id);
-    if (!controller) {
-        return;
-    }
-
-    controller.abort();
-    cameraFetchControllers.delete(gh_id);
-};
-
-const abortAllCameraFetches = () => {
-    cameraFetchControllers.forEach((controller) => controller.abort());
-    cameraFetchControllers.clear();
-};
-
-const ensurePaginationState = (gh_id) => {
-    if (!paginationStateMap.value[gh_id]) {
-        paginationStateMap.value[gh_id] = {
-            page: 1,
-            perPage: DEFAULT_CAMERA_PER_PAGE,
-            total: 0,
-            lastPage: 1,
-        };
-    }
-
-    return paginationStateMap.value[gh_id];
-};
-
-const getPaginationText = (gh_id) => {
-    const state = ensurePaginationState(gh_id);
-    if (state.total <= 0) {
-        return t("camera.page_no_data");
-    }
-
-    return `${state.page} ${t("common.of")} ${state.lastPage}`;
-};
-
-const getShowingText = (gh_id) => {
-    const state = ensurePaginationState(gh_id);
-    if (state.total <= 0) {
-        return t("camera.page_no_data");
-    }
-
-    const from = (state.page - 1) * state.perPage + 1;
-    const to = Math.min(state.page * state.perPage, state.total);
-
-    return `${t("camera.showing")} ${from} ${t("common.to")} ${to} ${t(
-        "common.of"
-    )} ${state.total}`;
-};
-
-const canPrevPage = (gh_id) => {
-    const state = ensurePaginationState(gh_id);
-    return state.page > 1;
-};
-
-const canNextPage = (gh_id) => {
-    const state = ensurePaginationState(gh_id);
-    return state.page < state.lastPage;
-};
-
-const goToPage = (gh_id, nextPage) => {
-    const state = ensurePaginationState(gh_id);
-    const clampedPage = Math.max(1, Math.min(nextPage, state.lastPage || 1));
-    if (clampedPage === state.page) {
-        return;
-    }
-
-    state.page = clampedPage;
-    fetchData(gh_id, { force: true });
-};
-
-const onBtFirst = (gh_id) => {
-    goToPage(gh_id, 1);
-};
-
-const onBtLast = (gh_id) => {
-    const state = ensurePaginationState(gh_id);
-    goToPage(gh_id, state.lastPage || 1);
-};
-
-const onBtNext = (gh_id) => {
-    const state = ensurePaginationState(gh_id);
-    goToPage(gh_id, state.page + 1);
-};
-
-const onBtPrevious = (gh_id) => {
-    const state = ensurePaginationState(gh_id);
-    goToPage(gh_id, state.page - 1);
-};
-
-const onPerPageChange = (gh_id, value) => {
-    const state = ensurePaginationState(gh_id);
-    const parsedPerPage = Number(value);
-    state.perPage =
-        Number.isFinite(parsedPerPage) && parsedPerPage > 0
-            ? parsedPerPage
-            : DEFAULT_CAMERA_PER_PAGE;
-    state.page = 1;
-    fetchData(gh_id, { force: true });
-=======
 const cameraPageMap = ref({});
 const sharedPerPage = ref(DEFAULT_CAMERA_PER_PAGE);
 
@@ -472,7 +365,6 @@ const onPerPageChange = (value) => {
         cameraPageMap.value[greenhouse.id] = 1;
     });
     fetchAllGreenhouses({ force: true });
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 };
 
 // fetch data table
@@ -490,11 +382,7 @@ const fetchData = async (gh_id, { force = false } = {}) => {
         return;
     }
 
-<<<<<<< HEAD
-    const state = ensurePaginationState(parsedGhId);
-=======
     ensurePaginationMeta(parsedGhId);
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
     const requestToken = (cameraRequestTokens.get(parsedGhId) || 0) + 1;
     cameraRequestTokens.set(parsedGhId, requestToken);
     abortCameraFetch(parsedGhId);
@@ -506,13 +394,8 @@ const fetchData = async (gh_id, { force = false } = {}) => {
 
         const queryData = {
             gh_id: parsedGhId,
-<<<<<<< HEAD
-            page: state.page,
-            per_page: state.perPage,
-=======
             page: getCurrentPage(parsedGhId),
             per_page: sharedPerPage.value,
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
         };
         const url =
             `/api/camera-per-gh?dict=` +
@@ -544,12 +427,6 @@ const fetchData = async (gh_id, { force = false } = {}) => {
 
             rowDataMap.value[parsedGhId] = jsonData.data;
             rowImageMap.value[parsedGhId] = nextPreview;
-<<<<<<< HEAD
-            state.total = Number(jsonData.total || 0);
-            state.lastPage = Number(jsonData.last_page || 1);
-            state.page = Number(jsonData.page || state.page);
-            loadedGreenhouseMap.value[parsedGhId] = true;
-=======
             const meta = ensurePaginationMeta(parsedGhId);
             meta.total = Number(jsonData.total || 0);
             meta.lastPage = Number(jsonData.last_page || 1);
@@ -561,7 +438,6 @@ const fetchData = async (gh_id, { force = false } = {}) => {
                 await fetchData(parsedGhId, { force: true });
                 return;
             }
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
         } else {
             toast.error(t("camera.failed_load_data"));
             console.error("Data format error: Expected array", jsonData);
@@ -599,13 +475,7 @@ const loadGreenhouseDataIfNeeded = (gh_id, { force = false } = {}) => {
 };
 
 onMounted(() => {
-<<<<<<< HEAD
-    (greenhouses || []).forEach((greenhouse) => {
-        loadGreenhouseDataIfNeeded(greenhouse.id);
-    });
-=======
     fetchAllGreenhouses();
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 });
 
 const formatDate = (date) => {
@@ -858,15 +728,6 @@ onUnmounted(() => {
                         class="bg-white overflow-hidden shadow-sm rounded-lg p-4 w-full"
                     >
                         <div
-<<<<<<< HEAD
-                            class="flex flex-col md:flex-row md:justify-between w-full items-center mb-4"
-                        >
-                            <p class="text-lg font-semibold leading-tight">
-                                {{ t("monitoring.camera") }} {{ greenhouse.name }}
-                            </p>
-
-                            <div class="flex flex-col items-end">
-=======
                             class="mb-4 flex w-full flex-col items-center gap-2 text-center md:flex-row md:items-center md:justify-between md:text-left"
                         >
                             <div class="flex flex-col">
@@ -881,7 +742,6 @@ onUnmounted(() => {
                             </div>
 
                             <div class="flex flex-col items-center md:items-end">
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
                                 <div
                                     v-if="
                                         rowImageMap[greenhouse.id]
@@ -979,120 +839,6 @@ onUnmounted(() => {
                                     </ag-grid-vue>
                                 </div>
                                 <div
-<<<<<<< HEAD
-                                    class="flex flex-wrap items-center gap-2 sm:flex-row sm:items-center sm:justify-between"
-                                >
-                                    <div
-                                        class="order-1 flex w-full items-center justify-center gap-2 sm:order-none sm:w-auto sm:justify-start"
-                                    >
-                                        <span
-                                            class="text-xs font-medium text-gray-500"
-                                            >{{ t("camera.show") }}</span
-                                        >
-                                        <select
-                                            :value="
-                                                paginationStateMap[
-                                                    greenhouse.id
-                                                ]?.perPage ||
-                                                DEFAULT_CAMERA_PER_PAGE
-                                            "
-                                            class="h-8 rounded border border-gray-300 px-2 text-sm"
-                                            @change="
-                                                onPerPageChange(
-                                                    greenhouse.id,
-                                                    $event.target.value
-                                                )
-                                            "
-                                        >
-                                            <option
-                                                v-for="option in CAMERA_PER_PAGE_OPTIONS"
-                                                :key="`${greenhouse.id}-per-page-${option}`"
-                                                :value="option"
-                                            >
-                                                {{ option }}
-                                            </option>
-                                        </select>
-                                        <span
-                                            class="text-xs font-medium text-gray-500"
-                                            >{{ t("camera.per_page") }}</span
-                                        >
-                                    </div>
-
-                                    <div class="order-2 flex gap-2 sm:order-none">
-                                        <Button
-                                            @click="
-                                                onBtFirst(greenhouse.id)
-                                            "
-                                            :disabled="
-                                                !canPrevPage(
-                                                    greenhouse.id
-                                                )
-                                            "
-                                        >
-                                            <i
-                                                class="fas fa-angle-double-left"
-                                            ></i>
-                                        </Button>
-                                        <Button
-                                            @click="
-                                                onBtPrevious(
-                                                    greenhouse.id
-                                                )
-                                            "
-                                            :disabled="
-                                                !canPrevPage(
-                                                    greenhouse.id
-                                                )
-                                            "
-                                        >
-                                            <i class="fas fa-angle-left"></i>
-                                        </Button>
-                                    </div>
-                                    <div class="order-2 min-w-0 flex-1 text-center sm:order-none sm:w-auto sm:flex-none">
-                                        <span
-                                            class="block text-sm font-medium text-gray-700"
-                                            >{{
-                                                getShowingText(
-                                                    greenhouse.id
-                                                )
-                                            }}</span
-                                        >
-                                        <span class="block text-xs text-gray-500"
-                                            >{{
-                                                getPaginationText(
-                                                    greenhouse.id
-                                                )
-                                            }}</span
-                                        >
-                                    </div>
-                                    <div
-                                        class="order-2 ml-auto flex gap-2 sm:order-none sm:ml-0"
-                                    >
-                                        <Button
-                                            @click="onBtNext(greenhouse.id)"
-                                            :disabled="
-                                                !canNextPage(
-                                                    greenhouse.id
-                                                )
-                                            "
-                                        >
-                                            <i class="fas fa-angle-right"></i>
-                                        </Button>
-                                        <Button
-                                            @click="onBtLast(greenhouse.id)"
-                                            id="btLast"
-                                            :disabled="
-                                                !canNextPage(
-                                                    greenhouse.id
-                                                )
-                                            "
-                                        >
-                                            <i
-                                                class="fas fa-angle-double-right"
-                                            ></i>
-                                        </Button>
-                                    </div>
-=======
                                     class="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-2 text-center sm:gap-2"
                                 >
                                     <Button
@@ -1112,7 +858,6 @@ onUnmounted(() => {
                                     >
                                         <i class="fas fa-angle-right"></i>
                                     </Button>
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
                                 </div>
                             </div>
                         </div>

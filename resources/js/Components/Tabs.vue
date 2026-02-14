@@ -74,13 +74,8 @@ const getGreenhouseLabel = (greenhouse) => {
     const labelNumber = labelNumberMatch ? Number(labelNumberMatch[1]) : null;
     const tabNumber = labelNumber ?? fallbackNumber;
     const defaultLabel = Number.isFinite(tabNumber) && tabNumber > 0
-<<<<<<< HEAD
-        ? `GH VONFLORIST ${tabNumber}`
-        : "GH VONFLORIST";
-=======
         ? `GH Von Florist ${tabNumber}`
         : "GH Von Florist";
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 
     // Normalisasi semua variasi nama default greenhouse agar label tab konsisten
     const shouldUseDefaultLabel =

@@ -270,11 +270,7 @@ __webpack_require__.r(__webpack_exports__);
       var labelNumberMatch = normalized.match(/(\d+)$/);
       var labelNumber = labelNumberMatch ? Number(labelNumberMatch[1]) : null;
       var tabNumber = labelNumber !== null && labelNumber !== void 0 ? labelNumber : fallbackNumber;
-<<<<<<< HEAD
-      var defaultLabel = Number.isFinite(tabNumber) && tabNumber > 0 ? "GH VONFLORIST ".concat(tabNumber) : "GH VONFLORIST";
-=======
       var defaultLabel = Number.isFinite(tabNumber) && tabNumber > 0 ? "GH Von Florist ".concat(tabNumber) : "GH Von Florist";
->>>>>>> 975e1a824b7453b99c41ffbb13797370510d5805
 
       // Normalisasi semua variasi nama default greenhouse agar label tab konsisten
       var shouldUseDefaultLabel = !label || /^gh\s*\d+$/.test(normalized) || /^greenhouse\s*\d+$/.test(normalized) || /^gh\s*von\s*florist\s*\d+$/.test(normalized) || /^gh\s*vonflorist\s*\d+$/.test(normalized);
