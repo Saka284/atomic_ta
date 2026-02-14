@@ -465,13 +465,17 @@ const setChartCachedPayload = (cacheKey, payload) => {
     });
 };
 
-const applyChartPayload = (sensor_id, payload) => {
-    if (!data.value[activeTab.value]) {
-        data.value[activeTab.value] = { gauge: {}, chart: {} };
+const applyChartPayload = (ghId, sensor_id, payload) => {
+    if (!ghId) {
+        return;
     }
 
-    if (!data.value[activeTab.value].chart[sensor_id]) {
-        data.value[activeTab.value].chart[sensor_id] = {};
+    if (!data.value[ghId]) {
+        data.value[ghId] = { gauge: {}, chart: {} };
+    }
+
+    if (!data.value[ghId].chart[sensor_id]) {
+        data.value[ghId].chart[sensor_id] = {};
     }
 
     const isPerNode =
@@ -492,7 +496,7 @@ const applyChartPayload = (sensor_id, payload) => {
         ? buildPerNodeDatasets(chartRawDatasets)
         : [];
 
-    data.value[activeTab.value].chart[sensor_id] = {
+    data.value[ghId].chart[sensor_id] = {
         chartData: Array.isArray(payload?.data) ? payload.data : [],
         chartLabel: localizeChartLabels(chartRawLabels, bucketType),
         chartRawLabels,
@@ -563,13 +567,14 @@ const fetchData = async (sensor_id) => {
 
         const queryData = buildChartQueryData(sensor_id);
         const cacheKey = buildChartCacheKey(queryData);
+        const targetGhId = queryData.gh_id;
 
         const cachedPayload = getChartCachedPayload(cacheKey);
         if (cachedPayload) {
             if (chartRequestTokens.get(sensor_id) !== requestToken) {
                 return;
             }
-            applyChartPayload(sensor_id, cachedPayload);
+            applyChartPayload(targetGhId, sensor_id, cachedPayload);
             return;
         }
 
@@ -601,7 +606,7 @@ const fetchData = async (sensor_id) => {
 
         const normalizedPayload = normalizeChartPayload(jsonData);
         setChartCachedPayload(cacheKey, normalizedPayload);
-        applyChartPayload(sensor_id, normalizedPayload);
+        applyChartPayload(targetGhId, sensor_id, normalizedPayload);
     } catch (error) {
         if (error?.name === "AbortError") {
             return;

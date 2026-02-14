@@ -5,7 +5,15 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue";
+import {
+    computed,
+    ref,
+    watch,
+    onMounted,
+    onBeforeUnmount,
+    markRaw,
+    shallowRef,
+} from "vue";
 import Chart from "chart.js/auto";
 
 // Props
@@ -40,7 +48,8 @@ const props = defineProps({
 });
 
 const canvasRef = ref(null);
-const chartInstance = ref(null);
+const chartInstance = shallowRef(null);
+const chartStructureSignature = ref("");
 
 const isLightIntensitySensor = computed(() => {
     const sensorName = String(props.sensor_name || "").trim().toLowerCase();
@@ -190,29 +199,110 @@ const getChartOptions = () => ({
     },
 });
 
-const upsertChart = () => {
-    if (!canvasRef.value) return;
+const normalizeStructureValue = (value) =>
+    value === null || value === undefined ? "" : String(value);
 
-    const chartLabels = getChartLabels();
-    const datasetSource = getDatasetSource();
+const buildChartStructureSignature = (labels = [], datasets = []) => {
+    const safeLabels = Array.isArray(labels) ? labels : [];
+    const safeDatasets = Array.isArray(datasets) ? datasets : [];
 
-    if (chartInstance.value === null) {
-        const ctx = canvasRef.value.getContext("2d");
-        chartInstance.value = new Chart(ctx, {
+    const datasetSignature = safeDatasets
+        .map((dataset, index) => {
+            const safeDataset =
+                dataset && typeof dataset === "object" ? dataset : {};
+
+            return [
+                index,
+                normalizeStructureValue(safeDataset.label),
+                Array.isArray(safeDataset.data) ? safeDataset.data.length : 0,
+                normalizeStructureValue(safeDataset.fill),
+                normalizeStructureValue(safeDataset.borderColor),
+                normalizeStructureValue(safeDataset.backgroundColor),
+            ].join("|");
+        })
+        .join("||");
+
+    return [
+        `labels:${safeLabels.length}`,
+        `datasets:${safeDatasets.length}`,
+        datasetSignature,
+    ].join("::");
+};
+
+const destroyChart = () => {
+    if (chartInstance.value !== null) {
+        chartInstance.value.destroy();
+        chartInstance.value = null;
+    }
+
+    chartStructureSignature.value = "";
+};
+
+const createChart = (chartLabels, datasetSource, structureSignature) => {
+    if (!canvasRef.value) {
+        return;
+    }
+
+    const ctx = canvasRef.value.getContext("2d");
+    if (!ctx) {
+        return;
+    }
+
+    chartInstance.value = markRaw(
+        new Chart(ctx, {
             type: "line",
             data: {
                 labels: chartLabels,
                 datasets: datasetSource,
             },
             options: getChartOptions(),
-        });
+        })
+    );
+    chartStructureSignature.value = structureSignature;
+};
+
+const upsertChart = () => {
+    if (!canvasRef.value) return;
+
+    const chartLabels = getChartLabels();
+    const datasetSource = getDatasetSource();
+    const structureSignature = buildChartStructureSignature(
+        chartLabels,
+        datasetSource
+    );
+
+    if (chartInstance.value === null) {
+        createChart(chartLabels, datasetSource, structureSignature);
+        return;
+    }
+
+    if (chartStructureSignature.value !== structureSignature) {
+        destroyChart();
+        createChart(chartLabels, datasetSource, structureSignature);
         return;
     }
 
     const chart = chartInstance.value;
-    chart.data.labels = chartLabels;
-    chart.data.datasets = datasetSource;
-    chart.update("none");
+
+    if (!chart) {
+        createChart(chartLabels, datasetSource, structureSignature);
+        return;
+    }
+
+    try {
+        chart.setActiveElements?.([]);
+        chart.tooltip?.setActiveElements?.([], { x: 0, y: 0 });
+
+        chart.data.labels = chartLabels;
+        chart.data.datasets = datasetSource;
+        chart.update("none");
+
+        chartStructureSignature.value = structureSignature;
+    } catch (error) {
+        console.error("Chart update failed, recreating chart instance.", error);
+        destroyChart();
+        createChart(chartLabels, datasetSource, structureSignature);
+    }
 };
 
 const normalizeWatchValue = (value) =>
@@ -271,10 +361,7 @@ watch(
 onMounted(upsertChart);
 
 onBeforeUnmount(() => {
-    if (chartInstance.value !== null) {
-        chartInstance.value.destroy();
-        chartInstance.value = null;
-    }
+    destroyChart();
 });
 </script>
 
