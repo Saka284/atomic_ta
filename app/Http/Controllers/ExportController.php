@@ -89,7 +89,7 @@ class ExportController extends Controller
                 $csvRow = [
                     $row->gh_id,
                     $row->recorded_at,
-                    $row->fog_percentage ?? '-',
+                    $row->confidence ?? '-',
                     $statusText,
                     basename($row->image) // Ambil nama filenya saja
                 ];

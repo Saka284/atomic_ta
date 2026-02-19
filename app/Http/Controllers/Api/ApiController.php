@@ -115,7 +115,7 @@ class ApiController extends Controller
             'isFoggy' => 'required|boolean',
             'recorded_at' => 'required|date',
             'image' => 'required|string', // base64,
-            'fog_percentage' => 'nullable|numeric'
+            'confidence' => 'nullable|numeric'
         ]);
 
         if ($validator->fails()) {
@@ -209,7 +209,7 @@ class ApiController extends Controller
                 'isFoggy' => $validated['isFoggy'],
                 'recorded_at' => $validated['recorded_at'],
                 'image' => $imageData,
-                'fog_percentage' => $request->fog_percentage ?? null,
+                'confidence' => $request->confidence ?? null,
             ]);
 
             return response()->json([
@@ -1000,7 +1000,7 @@ class ApiController extends Controller
                         isFoggy,
                         recorded_at,
                         DATE_FORMAT(recorded_at, '%d/%m/%Y %H:%i:%s') as recorded_at_24h,
-                        fog_percentage
+                        confidence
                     FROM camera_data
                     WHERE id IN ($placeholders)
                     ORDER BY recorded_at DESC, id DESC

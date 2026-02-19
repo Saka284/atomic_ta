@@ -25,12 +25,12 @@ class CameraDataSeeder extends Seeder
 
                 for ($hour = 0; $hour < 24; $hour++) { // Setiap jam
                     $isFoggy = (bool) rand(0, 1);
-                    $fogPercentage = $isFoggy ? rand(55, 95) : rand(0, 45);
+                    $confidenceScore = $isFoggy ? rand(55, 95) : rand(0, 45);
                     CameraData::create([
                         'gh_id'       => $greenhouse->id,
                         'image'       => '/storage/camera/' . ($isFoggy ? 'sample_foggy.jpg' : 'sample_clear.jpg'),
                         'isFoggy'     => $isFoggy,
-                        'fog_percentage' => $fogPercentage,
+                        'confidence'  => $confidenceScore,
                         'recorded_at' => $date->copy()->setHour($hour),
                     ]);
                 }
