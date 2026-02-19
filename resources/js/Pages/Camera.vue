@@ -141,7 +141,7 @@ const columnDefs = computed(() => [
         flex: 1,
     },
     {
-        headerName: t("camera.fog_accuracy"),
+        headerName: "Akurasi Deteksi",
         field: "confidence",
         sortable: true,
         resizable: false,
