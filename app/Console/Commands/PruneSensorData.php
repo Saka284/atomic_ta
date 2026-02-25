@@ -11,7 +11,9 @@ class PruneSensorData extends Command
      *
      * @var string
      */
-    protected $signature = 'data:prune {days=365 : The number of days of data to keep}';
+    protected $signature = 'data:prune
+        {days=365 : The number of days of data to keep}
+        {--force : Actually delete matching rows}';
 
     /**
      * The console command description.
@@ -29,13 +31,21 @@ class PruneSensorData extends Command
     {
         $days = $this->argument('days');
         $date = now()->subDays($days);
+        $query = \App\Models\SensorData::where('recorded_at', '<', $date);
+        $count = (int) $query->count();
 
         $this->info("Pruning data older than {$days} days ({$date->toDateString()})...");
+        $this->info("Matched {$count} rows.");
+
+        if (!$this->option('force')) {
+            $this->warn('Dry-run only. Re-run with --force to delete.');
+            return 0;
+        }
 
         // Prune via DELETE Query (Fastest)
-        $count = \App\Models\SensorData::where('recorded_at', '<', $date)->delete();
+        $deleted = $query->delete();
 
-        $this->info("Deleted {$count} records.");
+        $this->info("Deleted {$deleted} records.");
         
         // Optimize table (reclaim space)
         // DB::statement('OPTIMIZE TABLE sensor_data'); 

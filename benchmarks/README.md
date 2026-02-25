@@ -3,11 +3,16 @@
 This folder stores benchmark outputs used for local checks and CI artifact reports.
 In CI, baseline is generated automatically from the compared base commit/worktree.
 
+## Safety first
+- Never run benchmark prep against production database credentials.
+- Use a dedicated testing DB (`.env.testing`) for manual runs.
+- `scripts/bench_prepare_baseline.php` now defaults to isolated SQLite in a temporary worktree.
+
 ## Generate baseline (manual/local)
 ```bash
-php artisan migrate --force
-php artisan db:seed --class=BenchmarkSeeder --force
-php artisan bench:endpoints --output=benchmarks/baseline.json --fail-on-threshold
+php artisan migrate --env=testing --force
+php artisan db:seed --class=BenchmarkSeeder --env=testing --force
+php artisan bench:endpoints --env=testing --output=benchmarks/baseline.json --fail-on-threshold
 ```
 
 ## Generate baseline from older ref (automatic)
@@ -17,9 +22,9 @@ php scripts/bench_prepare_baseline.php --ref=origin/main --output=benchmarks/bas
 
 ## Run current benchmark (local)
 ```bash
-php artisan migrate --force
-php artisan db:seed --class=BenchmarkSeeder --force
-php artisan bench:endpoints --output=benchmarks/current.json --fail-on-threshold
+php artisan migrate --env=testing --force
+php artisan db:seed --class=BenchmarkSeeder --env=testing --force
+php artisan bench:endpoints --env=testing --output=benchmarks/current.json --fail-on-threshold
 php scripts/bench_compare.php --current=benchmarks/current.json --baseline=benchmarks/baseline.json
 ```
 

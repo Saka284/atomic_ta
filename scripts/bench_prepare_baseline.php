@@ -2,6 +2,8 @@
 
 // Usage:
 // php scripts/bench_prepare_baseline.php --ref=origin/main --output=benchmarks/baseline.json [--force]
+// By default this script uses an isolated SQLite database inside the worktree.
+// Set BENCH_USE_ISOLATED_SQLITE=0 to opt out (not recommended).
 
 $options = getopt('', [
     'ref::',
@@ -62,6 +64,30 @@ $readEnvValue = function (string $path, string $key): ?string {
     return null;
 };
 
+$writeEnvValue = function (string $path, string $key, string $value): void {
+    $lines = file_exists($path) ? @file($path, FILE_IGNORE_NEW_LINES) : [];
+    if ($lines === false) {
+        $lines = [];
+    }
+
+    $pattern = '/^\s*' . preg_quote($key, '/') . '\s*=/';
+    $updated = false;
+
+    foreach ($lines as $index => $line) {
+        if (preg_match($pattern, $line) === 1) {
+            $lines[$index] = $key . '=' . $value;
+            $updated = true;
+            break;
+        }
+    }
+
+    if (!$updated) {
+        $lines[] = $key . '=' . $value;
+    }
+
+    file_put_contents($path, implode(PHP_EOL, $lines) . PHP_EOL);
+};
+
 // Clean old worktree if exists
 if (is_dir($worktreeDir)) {
     $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
@@ -103,20 +129,39 @@ if (!file_exists($envPath)) {
     }
 }
 
-$dbName = $readEnvValue($envPath, 'DB_DATABASE');
-$appEnv = $readEnvValue($envPath, 'APP_ENV');
-$allowDestructive = getenv('BENCH_ALLOW_DESTRUCTIVE') === '1';
-$safeByDbName = is_string($dbName) && preg_match('/(test|bench)/i', $dbName) === 1;
-$safeByAppEnv = is_string($appEnv) && strtolower($appEnv) === 'testing';
+$useIsolatedSqlite = getenv('BENCH_USE_ISOLATED_SQLITE') !== '0';
 
-if (!$allowDestructive && !$safeByDbName && !$safeByAppEnv) {
-    fwrite(
-        STDERR,
-        "Refusing to run migrate:fresh on non-test database '{$dbName}'. ".
-        "Use BENCH_ALLOW_DESTRUCTIVE=1 to override intentionally.\n"
-    );
-    $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
-    exit(1);
+if ($useIsolatedSqlite) {
+    $sqlitePath = $worktreeDir . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'bench_baseline.sqlite';
+    $sqliteDir = dirname($sqlitePath);
+    if (!is_dir($sqliteDir)) {
+        @mkdir($sqliteDir, 0777, true);
+    }
+    if (!file_exists($sqlitePath)) {
+        @touch($sqlitePath);
+    }
+
+    $writeEnvValue($envPath, 'APP_ENV', 'testing');
+    $writeEnvValue($envPath, 'DB_CONNECTION', 'sqlite');
+    $writeEnvValue($envPath, 'DB_DATABASE', str_replace('\\', '/', $sqlitePath));
+
+    fwrite(STDOUT, "Using isolated SQLite database: {$sqlitePath}\n");
+} else {
+    $dbName = $readEnvValue($envPath, 'DB_DATABASE');
+    $appEnv = $readEnvValue($envPath, 'APP_ENV');
+    $allowDestructive = getenv('BENCH_ALLOW_DESTRUCTIVE') === '1';
+    $safeByDbName = is_string($dbName) && preg_match('/(test|bench)/i', $dbName) === 1;
+    $safeByAppEnv = is_string($appEnv) && strtolower($appEnv) === 'testing';
+
+    if (!$allowDestructive && !$safeByDbName && !$safeByAppEnv) {
+        fwrite(
+            STDERR,
+            "Refusing to run migrate:fresh on non-test database '{$dbName}'. ".
+            "Set BENCH_USE_ISOLATED_SQLITE=1 (default) or BENCH_ALLOW_DESTRUCTIVE=1 to override intentionally.\n"
+        );
+        $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
+        exit(1);
+    }
 }
 
 // Install dependencies if vendor missing
