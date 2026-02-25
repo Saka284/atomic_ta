@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class BenchmarkSeeder extends Seeder
 {
@@ -109,19 +110,31 @@ class BenchmarkSeeder extends Seeder
             );
         }
 
+        $cameraMetricColumn = null;
+        if (Schema::hasColumn('camera_data', 'confidence')) {
+            $cameraMetricColumn = 'confidence';
+        } elseif (Schema::hasColumn('camera_data', 'fog_percentage')) {
+            $cameraMetricColumn = 'fog_percentage';
+        }
+
         $cameraRowsData = [];
         foreach ($greenhouses as $gh) {
             for ($i = 0; $i < $cameraRows; $i++) {
                 $recordedAt = $now->copy()->subMinutes($i);
-                $cameraRowsData[] = [
+                $row = [
                     'gh_id' => $gh->id,
                     'image' => '/images/no-image.svg',
                     'isFoggy' => (bool) ($i % 2),
-                    'confidence' => $this->randomFog(),
                     'recorded_at' => $recordedAt,
                     'created_at' => $recordedAt,
                     'updated_at' => $recordedAt,
                 ];
+
+                if ($cameraMetricColumn !== null) {
+                    $row[$cameraMetricColumn] = $this->randomFog();
+                }
+
+                $cameraRowsData[] = $row;
             }
         }
         if (!empty($cameraRowsData)) {
