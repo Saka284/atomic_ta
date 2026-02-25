@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             GreenhouseSeeder::class,
             SensorSeeder::class,
+            SensorRSSISeeder::class,
         ]);
     }
 }
