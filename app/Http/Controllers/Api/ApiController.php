@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 
 class ApiController extends Controller
 {
@@ -131,6 +132,8 @@ class ApiController extends Controller
         try {
             $imageData = null;
             $timestamp = now()->format('YmdHis');
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('camera');
 
             if ($request->has('image')) { // base64
                 $base64String = $request->image;
@@ -147,7 +150,7 @@ class ApiController extends Controller
 
                 // Decode base64
                 $imageData = substr($base64String, strpos($base64String, ',') + 1);
-                $imageData = base64_decode($imageData);
+                $imageData = base64_decode($imageData, true);
 
                 if ($imageData === false) {
                     return response()->json([
@@ -157,8 +160,14 @@ class ApiController extends Controller
                 }
 
                 // Tentukan path file sementara
-                $originalPath = public_path("/storage/camera/{$timestamp}.{$format}");
-                file_put_contents($originalPath, $imageData);
+                $originalRelativePath = "camera/{$timestamp}.{$format}";
+                $originalPath = $disk->path($originalRelativePath);
+                if (file_put_contents($originalPath, $imageData) === false) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to save image.'
+                    ], 500);
+                }
 
                 // Load gambar sesuai format
                 if ($format === 'png') {
@@ -180,8 +189,15 @@ class ApiController extends Controller
                 }
 
                 // Simpan sebagai WebP
-                $webpPath = public_path("/storage/camera/{$timestamp}.webp");
-                imagewebp($image, $webpPath, 50); // Quality WebP 50%
+                $webpRelativePath = "camera/{$timestamp}.webp";
+                $webpPath = $disk->path($webpRelativePath);
+                if (!imagewebp($image, $webpPath, 50)) { // Quality WebP 50%
+                    imagedestroy($image);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to encode WebP image.'
+                    ], 500);
+                }
                 imagedestroy($image);
 
                 // Bandingkan ukuran file
@@ -189,10 +205,10 @@ class ApiController extends Controller
                 $sizeWebp = filesize($webpPath);
 
                 if ($sizeWebp < $sizeOriginal) {
-                    unlink($originalPath); // Hapus file asli jika WebP lebih kecil
+                    $disk->delete($originalRelativePath); // Hapus file asli jika WebP lebih kecil
                     $imageData = "/storage/camera/{$timestamp}.webp";
                 } else {
-                    unlink($webpPath); // Hapus WebP jika lebih besar
+                    $disk->delete($webpRelativePath); // Hapus WebP jika lebih besar
                     $imageData = "/storage/camera/{$timestamp}.{$format}";
                 }
             }
