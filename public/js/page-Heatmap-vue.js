@@ -469,15 +469,15 @@ var AUTO_REFRESH_SECONDS = 300;
 var HEATMAP_RADIUS = 300;
 
 // ===============================
-// GRADIENT COLORS UNTUK HEATMAP
+// GRADIENT COLORS UNTUK HEATMAP (BIDIRECTIONAL)
 // ===============================
 /**
- * Definisi warna gradient berdasarkan nilai normalized (0-1.5)
+ * Definisi warna gradient berdasarkan deviasi (0-1.5)
  * Format: { stop, r, g, b }
- * - stop: posisi di gradient (0 = nilai min, 1 = nilai max)
+ * - stop: deviasi dari center (0 = di tengah/aman, 1 = di boundary/waspada)
  * - r, g, b: komponen warna RGB
  */
-// HARUS SAMA dengan legend gradient untuk konsistensi warna!
+// HARUS SAMA dengan getStatus gradient untuk konsistensi warna!
 
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ({
   __name: 'Heatmap',
@@ -718,44 +718,65 @@ var HEATMAP_RADIUS = 300;
 
     // ===============================
     // COMPUTED: LEGEND GRADIENT STYLE
-    // Gradient langsung dari threshold min ke max (skala sudah = threshold)
+    // Bidirectional: hijau di tengah (Aman), merah di kedua ujung (Waspada/Kritis)
+    // Bottom=min(Waspada) → Center=optimal(Aman) → Top=max(Waspada)
     // ===============================
     var legendGradientStyle = (0,vue__WEBPACK_IMPORTED_MODULE_0__.computed)(function () {
-      // Gradient colors - langsung dari 0% ke 100% karena skala = threshold
+      // Symmetrical gradient: merah → biru → merah
       var gradientColors = [{
         pos: 0,
-        color: "#2563eb"
+        color: "#dc2626"
       },
-      // Biru (Aman)
+      // Min boundary (Kritis)
       {
-        pos: 0.15,
-        color: "#3b82f6"
+        pos: 0.1,
+        color: "#ef4444"
       },
-      // Biru terang
+      // Merah
+      {
+        pos: 0.2,
+        color: "#fb923c"
+      },
+      // Orange (Waspada)
       {
         pos: 0.3,
+        color: "#facc15"
+      },
+      // Kuning
+      {
+        pos: 0.4,
         color: "#06b6d4"
       },
       // Cyan (Normal)
       {
-        pos: 0.45,
-        color: "#facc15"
+        pos: 0.5,
+        color: "#2563eb"
       },
-      // Kuning (Waspada)
+      // Biru (Aman - center)
       {
         pos: 0.6,
-        color: "#fb923c"
+        color: "#06b6d4"
       },
-      // Orange
+      // Cyan (Normal)
+      {
+        pos: 0.7,
+        color: "#facc15"
+      },
+      // Kuning
       {
         pos: 0.8,
+        color: "#fb923c"
+      },
+      // Orange (Waspada)
+      {
+        pos: 0.9,
         color: "#ef4444"
       },
       // Merah
       {
         pos: 1,
         color: "#dc2626"
-      } // Merah gelap (Kritis)
+      } // Max boundary (Kritis)
       ];
       var stops = gradientColors.map(function (_ref2) {
         var pos = _ref2.pos,
@@ -767,25 +788,37 @@ var HEATMAP_RADIUS = 300;
       };
     });
 
-    // Horizontal gradient untuk mobile legend
+    // Horizontal gradient untuk mobile legend (bidirectional)
     var legendGradientStyleHorizontal = (0,vue__WEBPACK_IMPORTED_MODULE_0__.computed)(function () {
       var gradientColors = [{
         pos: 0,
-        color: "#2563eb"
+        color: "#dc2626"
       }, {
-        pos: 0.15,
-        color: "#3b82f6"
+        pos: 0.1,
+        color: "#ef4444"
       }, {
-        pos: 0.3,
-        color: "#06b6d4"
-      }, {
-        pos: 0.45,
-        color: "#facc15"
-      }, {
-        pos: 0.6,
+        pos: 0.2,
         color: "#fb923c"
       }, {
+        pos: 0.3,
+        color: "#facc15"
+      }, {
+        pos: 0.4,
+        color: "#06b6d4"
+      }, {
+        pos: 0.5,
+        color: "#2563eb"
+      }, {
+        pos: 0.6,
+        color: "#06b6d4"
+      }, {
+        pos: 0.7,
+        color: "#facc15"
+      }, {
         pos: 0.8,
+        color: "#fb923c"
+      }, {
+        pos: 0.9,
         color: "#ef4444"
       }, {
         pos: 1,
@@ -802,50 +835,65 @@ var HEATMAP_RADIUS = 300;
     });
 
     // ===============================
-    // FUNGSI NORMALISASI NILAI SENSOR
+    // FUNGSI NORMALISASI NILAI SENSOR (BIDIRECTIONAL)
     // ===============================
     /**
-     * Mengkonversi nilai sensor mentah menjadi nilai 0-1.5 untuk warna heatmap
-     * - 0 = di batas minimum threshold (biru/aman)
-     * - 1 = di batas maximum threshold (orange/waspada)
-     * - 1.5 = jauh di atas maximum (merah/kritis)
+     * Mengkonversi nilai sensor menjadi deviasi 0-1.5 dari titik tengah range
+     * BIDIRECTIONAL: semakin jauh dari tengah (baik ke atas maupun bawah) = semakin buruk
+     * - 0   = tepat di tengah range (hijau/aman)
+     * - 0.5 = setengah jalan ke boundary (cyan/normal)
+     * - 1.0 = tepat di batas min ATAU max (orange/waspada)
+     * - 1.5 = jauh di luar range (merah/kritis)
      * 
-     * Contoh: threshold min=25, max=35
-     * - nilai 25 → normalized = 0 (biru)
-     * - nilai 30 → normalized = 0.5 (kuning)
-     * - nilai 35 → normalized = 1 (orange)
-     * - nilai 40 → normalized = 1.5 (merah kritis)
+     * Contoh: threshold min=25, max=35, center=30
+     * - nilai 30 → deviation = 0 (hijau, aman)
+     * - nilai 27.5 atau 32.5 → deviation = 0.5 (normal)
+     * - nilai 25 atau 35 → deviation = 1.0 (waspada)
+     * - nilai 20 atau 40 → deviation = 1.5 (kritis)
      */
     function normalizeValue(value) {
       var val = parseFloat(value);
       if (isNaN(val)) return 0;
       var thresholds = currentThresholds.value;
+      var center = (thresholds.min + thresholds.max) / 2;
+      var halfRange = (thresholds.max - thresholds.min) / 2;
+      if (halfRange === 0) return 0;
 
-      // Rumus normalisasi: (nilai - min) / (max - min)
-      var normalized = (val - thresholds.min) / (thresholds.max - thresholds.min);
+      // Deviasi dari titik tengah: 0 = di tengah, 1 = di boundary
+      var deviation = Math.abs(val - center) / halfRange;
 
       // Clamp: minimal 0, maksimal 1.5
-      return Math.min(Math.max(normalized, 0), 1.5);
+      return Math.min(deviation, 1.5);
     }
 
     // ===============================
-    // FUNGSI PENENTUAN STATUS
+    // FUNGSI PENENTUAN STATUS (BIDIRECTIONAL)
     // ===============================
     /**
-     * Menentukan status dan warna marker berdasarkan nilai sensor
-     * Menggunakan gradient yang SAMA dengan heatmap dan legend untuk konsistensi
-     * Warna dihitung berdasarkan posisi normalized value di gradient
+     * Menentukan status dan warna marker berdasarkan deviasi dari titik tengah range
+     * BIDIRECTIONAL: di tengah = Aman, mendekati min/max = Waspada/Kritis
+     * Warna dihitung berdasarkan deviasi, konsisten dengan heatmap dan legend
      */
     function getStatus(value) {
       var val = parseFloat(value);
       var thresholds = currentThresholds.value;
-      var range = thresholds.max - thresholds.min;
+      var center = (thresholds.min + thresholds.max) / 2;
+      var halfRange = (thresholds.max - thresholds.min) / 2;
+      if (halfRange === 0) {
+        return {
+          text: t("heatmap.normal"),
+          color: 'rgb(37, 99, 235)'
+        };
+      }
 
-      // Normalisasi nilai: 0 = min, 1 = max
-      var normalized = (val - thresholds.min) / range;
-      normalized = Math.max(0, Math.min(1, normalized)); // Clamp 0-1
+      // Deviasi dari titik tengah: 0 = di tengah, 1 = di boundary min/max
+      var deviation = Math.abs(val - center) / halfRange;
+      deviation = Math.max(0, Math.min(1.5, deviation)); // Clamp 0-1.5
 
-      // Gradient colors SAMA dengan heatmap dan legend
+      // Clamp untuk warna (0-1)
+      var deviationClamped = Math.min(1, deviation);
+
+      // Gradient colors: biru (deviasi 0) → merah (deviasi 1)
       var gradientColors = [{
         stop: 0.0,
         r: 37,
@@ -854,33 +902,26 @@ var HEATMAP_RADIUS = 300;
       },
       // #2563eb - Biru (Aman)
       {
-        stop: 0.15,
-        r: 59,
-        g: 130,
-        b: 246
-      },
-      // #3b82f6 - Biru terang
-      {
-        stop: 0.3,
+        stop: 0.2,
         r: 6,
         g: 182,
         b: 212
       },
       // #06b6d4 - Cyan (Normal)
       {
-        stop: 0.45,
+        stop: 0.4,
         r: 250,
         g: 204,
         b: 21
       },
-      // #facc15 - Kuning (Waspada)
+      // #facc15 - Kuning
       {
         stop: 0.6,
         r: 251,
         g: 146,
         b: 60
       },
-      // #fb923c - Orange
+      // #fb923c - Orange (Waspada)
       {
         stop: 0.8,
         r: 239,
@@ -896,26 +937,30 @@ var HEATMAP_RADIUS = 300;
       } // #dc2626 - Merah gelap (Kritis)
       ];
 
-      // Interpolasi warna berdasarkan normalized value
+      // Interpolasi warna berdasarkan deviasi
       var lower = gradientColors[0];
       var upper = gradientColors[gradientColors.length - 1];
       for (var i = 0; i < gradientColors.length - 1; i++) {
-        if (normalized >= gradientColors[i].stop && normalized <= gradientColors[i + 1].stop) {
+        if (deviationClamped >= gradientColors[i].stop && deviationClamped <= gradientColors[i + 1].stop) {
           lower = gradientColors[i];
           upper = gradientColors[i + 1];
           break;
         }
       }
       var rangeStop = upper.stop - lower.stop;
-      var ratio = rangeStop === 0 ? 0 : (normalized - lower.stop) / rangeStop;
+      var ratio = rangeStop === 0 ? 0 : (deviationClamped - lower.stop) / rangeStop;
       var r = Math.round(lower.r + (upper.r - lower.r) * ratio);
       var g = Math.round(lower.g + (upper.g - lower.g) * ratio);
       var b = Math.round(lower.b + (upper.b - lower.b) * ratio);
       var color = "rgb(".concat(r, ", ").concat(g, ", ").concat(b, ")");
 
-      // Tentukan text status berdasarkan zona
+      // Tentukan text status berdasarkan deviasi
       var text;
-      if (normalized <= 0.3) text = t("heatmap.safe");else if (normalized <= 0.5) text = t("heatmap.normal");else if (normalized <= 1) text = t("heatmap.warning");else text = t("heatmap.critical");
+      if (deviation <= 0.3) text = t("heatmap.safe"); // Dekat tengah = Aman
+      else if (deviation <= 0.6) text = t("heatmap.normal"); // Agak jauh = Normal
+      else if (deviation <= 1.0) text = t("heatmap.warning"); // Mendekati boundary = Waspada
+      else text = t("heatmap.critical"); // Di luar range = Kritis
+
       return {
         text: text,
         color: color
@@ -1045,35 +1090,28 @@ var HEATMAP_RADIUS = 300;
       g: 99,
       b: 235
     },
-    // #2563eb - Biru (Aman)
+    // #2563eb - Biru (Aman - di tengah)
     {
-      stop: 0.15,
-      r: 59,
-      g: 130,
-      b: 246
-    },
-    // #3b82f6 - Biru terang
-    {
-      stop: 0.3,
+      stop: 0.2,
       r: 6,
       g: 182,
       b: 212
     },
     // #06b6d4 - Cyan (Normal)
     {
-      stop: 0.45,
+      stop: 0.4,
       r: 250,
       g: 204,
       b: 21
     },
-    // #facc15 - Kuning (Waspada)
+    // #facc15 - Kuning
     {
       stop: 0.6,
       r: 251,
       g: 146,
       b: 60
     },
-    // #fb923c - Orange
+    // #fb923c - Orange (Waspada)
     {
       stop: 0.8,
       r: 239,
@@ -2196,30 +2234,48 @@ var _hoisted_15 = {
   "class": "edge-label"
 };
 var _hoisted_16 = {
-  "class": "legend-mobile-edge"
+  "class": "legend-mobile-bar-wrapper"
 };
 var _hoisted_17 = {
-  "class": "edge-value"
+  "class": "legend-mobile-center"
 };
 var _hoisted_18 = {
-  "class": "edge-label"
+  "class": "edge-value"
 };
 var _hoisted_19 = {
-  "class": "legend-desktop"
+  "class": "edge-label"
 };
 var _hoisted_20 = {
-  "class": "text-sm font-semibold text-gray-700 mb-3"
+  "class": "legend-mobile-edge"
 };
 var _hoisted_21 = {
-  "class": "legend-desktop-content"
+  "class": "edge-value"
 };
 var _hoisted_22 = {
-  "class": "legend-bar-container"
+  "class": "edge-label"
 };
 var _hoisted_23 = {
-  "class": "legend-labels"
+  "class": "legend-desktop"
 };
 var _hoisted_24 = {
+  "class": "text-sm font-semibold text-gray-700 mb-3"
+};
+var _hoisted_25 = {
+  "class": "legend-desktop-content"
+};
+var _hoisted_26 = {
+  "class": "legend-bar-container"
+};
+var _hoisted_27 = {
+  "class": "legend-labels"
+};
+var _hoisted_28 = {
+  style: {
+    "color": "#2563eb",
+    "font-weight": "600"
+  }
+};
+var _hoisted_29 = {
   "class": "param-buttons"
 };
 function render(_ctx, _cache, $props, $setup, $data, $options) {
@@ -2245,13 +2301,13 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
           height: $setup.mapHeight,
           opacity: $setup.mapOpacity
         })
-      }, null, 4 /* STYLE */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" LEGEND MOBILE (Horizontal, always visible on mobile) "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_10, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("p", _hoisted_11, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.label) + " (" + (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.unit) + ")", 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_12, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_13, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_14, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.min), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_15, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.safe")), 1 /* TEXT */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", {
+      }, null, 4 /* STYLE */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" LEGEND MOBILE (Horizontal, bidirectional) "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_10, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("p", _hoisted_11, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.label) + " (" + (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.unit) + ")", 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_12, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_13, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_14, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.min), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_15, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.warning")), 1 /* TEXT */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_16, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", {
         "class": "legend-mobile-bar",
         style: (0,vue__WEBPACK_IMPORTED_MODULE_0__.normalizeStyle)($setup.legendGradientStyleHorizontal)
-      }, null, 4 /* STYLE */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_16, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_17, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.max), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_18, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.critical")), 1 /* TEXT */)])])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" LEGEND DESKTOP (Vertical, sidebar on desktop) "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_19, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("p", _hoisted_20, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.label) + " (" + (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.unit) + ") ", 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_21, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" Legend Bar (skala langsung dari threshold min ke max) "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_22, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", {
+      }, null, 4 /* STYLE */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_17, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_18, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(Math.round(($setup.currentConfig.min + $setup.currentConfig.max) / 2)), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_19, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.safe")), 1 /* TEXT */)])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_20, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_21, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.max), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_22, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.warning")), 1 /* TEXT */)])])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" LEGEND DESKTOP (Vertical, sidebar on desktop) "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_23, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("p", _hoisted_24, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.label) + " (" + (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.unit) + ") ", 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_25, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" Legend Bar (bidirectional: merah di ujung, hijau di tengah) "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_26, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", {
         "class": "legend-bar",
         style: (0,vue__WEBPACK_IMPORTED_MODULE_0__.normalizeStyle)($setup.legendGradientStyle)
-      }, null, 4 /* STYLE */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" Scale Labels (dynamic) "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_23, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", null, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("b", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.max), 1 /* TEXT */), _cache[4] || (_cache[4] = (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("br", null, null, -1 /* CACHED */)), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createTextVNode)((0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.critical")), 1 /* TEXT */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(Math.round($setup.currentConfig.max * 0.75)), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(Math.round($setup.currentConfig.max * 0.5)), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(Math.round($setup.currentConfig.max * 0.25)), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", null, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("b", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.min), 1 /* TEXT */), _cache[5] || (_cache[5] = (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("br", null, null, -1 /* CACHED */)), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createTextVNode)((0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.safe")), 1 /* TEXT */)])])])])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" PARAMETER BUTTON "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_24, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("button", {
+      }, null, 4 /* STYLE */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" Scale Labels (bidirectional) "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_27, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", null, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("b", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.max), 1 /* TEXT */), _cache[4] || (_cache[4] = (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("br", null, null, -1 /* CACHED */)), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createTextVNode)((0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.warning")), 1 /* TEXT */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(Math.round(($setup.currentConfig.min + $setup.currentConfig.max) / 2 + ($setup.currentConfig.max - $setup.currentConfig.min) / 4)), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", _hoisted_28, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("b", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(Math.round(($setup.currentConfig.min + $setup.currentConfig.max) / 2)), 1 /* TEXT */), _cache[5] || (_cache[5] = (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("br", null, null, -1 /* CACHED */)), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createTextVNode)((0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.safe")), 1 /* TEXT */)]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)(Math.round(($setup.currentConfig.min + $setup.currentConfig.max) / 2 - ($setup.currentConfig.max - $setup.currentConfig.min) / 4)), 1 /* TEXT */), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("span", null, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("b", null, (0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.currentConfig.min), 1 /* TEXT */), _cache[6] || (_cache[6] = (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("br", null, null, -1 /* CACHED */)), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createTextVNode)((0,vue__WEBPACK_IMPORTED_MODULE_0__.toDisplayString)($setup.t("heatmap.warning")), 1 /* TEXT */)])])])])]), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createCommentVNode)(" PARAMETER BUTTON "), (0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("div", _hoisted_29, [(0,vue__WEBPACK_IMPORTED_MODULE_0__.createElementVNode)("button", {
         "class": (0,vue__WEBPACK_IMPORTED_MODULE_0__.normalizeClass)(["param-btn", $setup.activeParameter === 'temperature' ? 'param-active' : 'param-inactive']),
         onClick: _cache[1] || (_cache[1] = function ($event) {
           return $setup.activeParameter = 'temperature';
@@ -2673,7 +2729,7 @@ __webpack_require__.r(__webpack_exports__);
 
 var ___CSS_LOADER_EXPORT___ = _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0___default()(function(i){return i[1]});
 // Module
-___CSS_LOADER_EXPORT___.push([module.id, "\r\n\r\n/* ===========================\r\n   LAYOUT - RESPONSIVE\r\n   =========================== */\n.heatmap-layout[data-v-373293d3] {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 1rem;\r\n  margin-top: 1rem;\n}\n@media (min-width: 1024px) {\n.heatmap-layout[data-v-373293d3] {\r\n    flex-direction: row;\n}\n}\r\n\r\n/* ===========================\r\n   MAP CONTAINER\r\n   =========================== */\n.map-container[data-v-373293d3] {\r\n  flex: 1;\r\n  background: white;\r\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);\r\n  /* Mobile: full rounded */\r\n  border-radius: 0.5rem;\r\n  padding: 0.75rem;\n}\n@media (min-width: 640px) {\n.map-container[data-v-373293d3] {\r\n    padding: 1rem;\n}\n}\n@media (min-width: 1024px) {\n.map-container[data-v-373293d3] {\r\n    /* Desktop: bottom-left not rounded (button attached) */\r\n    border-radius: 0.5rem 0.5rem 0.5rem 0;\n}\n}\n.map-view[data-v-373293d3] {\r\n  width: 100%;\r\n  /* height di-set secara dynamic via inline style berdasarkan aspect ratio */\r\n  height: 280px; /* Fallback jika JS belum jalan */\r\n  border: 1px solid #d1d5db;\r\n  border-radius: 0.5rem;\r\n  overflow: hidden;\r\n  transition: height 0.3s ease, opacity 0.3s ease;\n}\r\n\r\n/* ===========================\r\n   LEGEND MOBILE (Horizontal)\r\n   =========================== */\n.legend-mobile[data-v-373293d3] {\r\n  display: block;\r\n  background: #f9fafb;\r\n  border: 1px solid #e5e7eb;\r\n  border-radius: 0.5rem;\r\n  padding: 0.5rem 0.75rem;\n}\n@media (min-width: 1024px) {\n.legend-mobile[data-v-373293d3] {\r\n    display: none;\n}\n}\n.legend-mobile-title[data-v-373293d3] {\r\n  font-size: 0.875rem;\r\n  font-weight: 600;\r\n  color: #374151;\r\n  text-align: center;\r\n  margin-bottom: 0.5rem;\n}\n.legend-mobile-content[data-v-373293d3] {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: 0.5rem;\n}\n.legend-mobile-edge[data-v-373293d3] {\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  line-height: 1.1;\n}\n.legend-mobile-edge .edge-value[data-v-373293d3] {\r\n  font-size: 14px;\r\n  font-weight: 700;\r\n  color: #374151;\n}\n.legend-mobile-edge .edge-label[data-v-373293d3] {\r\n  font-size: 11px;\r\n  font-weight: 400;\r\n  color: #6b7280;\n}\n.legend-mobile-bar[data-v-373293d3] {\r\n  position: relative;\r\n  flex: 1;\r\n  max-width: 180px;\r\n  height: 16px;\r\n  border-radius: 8px;\n}\r\n\r\n/* ===========================\r\n   LEGEND DESKTOP (Vertical)\r\n   =========================== */\n.legend-desktop[data-v-373293d3] {\r\n  display: none;\r\n  background: #f9fafb;\r\n  border: 1px solid #e5e7eb;\r\n  border-radius: 0.5rem;\r\n  padding: 1rem;\r\n  min-width: 160px;\n}\n@media (min-width: 1024px) {\n.legend-desktop[data-v-373293d3] {\r\n    display: block;\n}\n}\n.legend-desktop-content[data-v-373293d3] {\r\n  display: flex;\r\n  gap: 0.75rem;\r\n  align-items: stretch;\r\n  justify-content: center;\r\n  height: 380px;\n}\r\n\r\n/* ===========================\r\n   LEGEND BAR (Desktop)\r\n   =========================== */\n.legend-bar-container[data-v-373293d3] {\r\n  position: relative;\r\n  width: 22px;\n}\n.legend-bar[data-v-373293d3] {\r\n  width: 22px;\r\n  height: 100%;\r\n  border-radius: 12px;\n}\n.legend-labels[data-v-373293d3] {\r\n  display: flex;\r\n  flex-direction: column;\r\n  justify-content: space-between;\r\n  font-size: 12px;\r\n  color: #4b5563;\r\n  text-align: center;\n}\r\n\r\n/* ===========================\r\n   PARAMETER BUTTONS\r\n   =========================== */\n.param-buttons[data-v-373293d3] {\r\n  display: flex;\r\n  gap: 0.5rem;\r\n  overflow-x: auto;\r\n  -webkit-overflow-scrolling: touch;\r\n  scrollbar-width: none;\r\n  margin-top: 0.75rem;\n}\n.param-buttons[data-v-373293d3]::-webkit-scrollbar {\r\n  display: none;\n}\n@media (min-width: 1024px) {\n.param-buttons[data-v-373293d3] {\r\n    gap: 0.25rem;\r\n    margin-top: 0;\n}\n}\n.param-btn[data-v-373293d3] {\r\n  flex: 1;\r\n  min-width: 0;\r\n  padding: 0.65rem 0.5rem;\r\n  font-size: 0.875rem;\r\n  /* Mobile: full rounded */\r\n  border-radius: 0.5rem;\r\n  border: 1px solid #d1d5db;\r\n  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);\r\n  transition: all 0.2s ease;\r\n  white-space: nowrap;\r\n  text-align: center;\n}\n@media (min-width: 1024px) {\n.param-btn[data-v-373293d3] {\r\n    flex: none;\r\n    padding: 0.5rem 1rem;\r\n    font-size: 0.875rem;\r\n    /* Desktop: only bottom rounded (attached to map) */\r\n    border-radius: 0;\r\n    border-bottom-left-radius: 0.375rem;\r\n    border-bottom-right-radius: 0.375rem;\r\n    border: none;\r\n    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);\n}\n}\n.param-active[data-v-373293d3] {\r\n  background-color: #ffffff;\r\n  color: #4b5563;\n}\n.param-inactive[data-v-373293d3] {\r\n  background-color: #e5e7eb;\r\n  color: #4b5563;\n}\n.param-inactive[data-v-373293d3]:active,\r\n.param-inactive[data-v-373293d3]:hover {\r\n  background-color: #d1d5db;\r\n  color: #374151;\n}\n.leaflet-container[data-v-373293d3] {\r\n  background: #f9fafb;\n}\r\n", ""]);
+___CSS_LOADER_EXPORT___.push([module.id, "\r\n\r\n/* ===========================\r\n   LAYOUT - RESPONSIVE\r\n   =========================== */\n.heatmap-layout[data-v-373293d3] {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 1rem;\r\n  margin-top: 1rem;\n}\n@media (min-width: 1024px) {\n.heatmap-layout[data-v-373293d3] {\r\n    flex-direction: row;\n}\n}\r\n\r\n/* ===========================\r\n   MAP CONTAINER\r\n   =========================== */\n.map-container[data-v-373293d3] {\r\n  flex: 1;\r\n  background: white;\r\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);\r\n  /* Mobile: full rounded */\r\n  border-radius: 0.5rem;\r\n  padding: 0.75rem;\n}\n@media (min-width: 640px) {\n.map-container[data-v-373293d3] {\r\n    padding: 1rem;\n}\n}\n@media (min-width: 1024px) {\n.map-container[data-v-373293d3] {\r\n    /* Desktop: bottom-left not rounded (button attached) */\r\n    border-radius: 0.5rem 0.5rem 0.5rem 0;\n}\n}\n.map-view[data-v-373293d3] {\r\n  width: 100%;\r\n  /* height di-set secara dynamic via inline style berdasarkan aspect ratio */\r\n  height: 280px; /* Fallback jika JS belum jalan */\r\n  border: 1px solid #d1d5db;\r\n  border-radius: 0.5rem;\r\n  overflow: hidden;\r\n  transition: height 0.3s ease, opacity 0.3s ease;\n}\r\n\r\n/* ===========================\r\n   LEGEND MOBILE (Horizontal)\r\n   =========================== */\n.legend-mobile[data-v-373293d3] {\r\n  display: block;\r\n  background: #f9fafb;\r\n  border: 1px solid #e5e7eb;\r\n  border-radius: 0.5rem;\r\n  padding: 0.5rem 0.75rem;\n}\n@media (min-width: 1024px) {\n.legend-mobile[data-v-373293d3] {\r\n    display: none;\n}\n}\n.legend-mobile-title[data-v-373293d3] {\r\n  font-size: 0.875rem;\r\n  font-weight: 600;\r\n  color: #374151;\r\n  text-align: center;\r\n  margin-bottom: 0.5rem;\n}\n.legend-mobile-content[data-v-373293d3] {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: 0.5rem;\n}\n.legend-mobile-edge[data-v-373293d3] {\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  line-height: 1.1;\n}\n.legend-mobile-edge .edge-value[data-v-373293d3] {\r\n  font-size: 14px;\r\n  font-weight: 700;\r\n  color: #374151;\n}\n.legend-mobile-edge .edge-label[data-v-373293d3] {\r\n  font-size: 11px;\r\n  font-weight: 400;\r\n  color: #6b7280;\n}\n.legend-mobile-bar-wrapper[data-v-373293d3] {\r\n  position: relative;\r\n  flex: 1;\r\n  max-width: 180px;\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  gap: 2px;\n}\n.legend-mobile-bar[data-v-373293d3] {\r\n  position: relative;\r\n  width: 100%;\r\n  height: 16px;\r\n  border-radius: 8px;\n}\n.legend-mobile-center[data-v-373293d3] {\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  line-height: 1.1;\n}\n.legend-mobile-center .edge-value[data-v-373293d3] {\r\n  font-size: 12px;\r\n  font-weight: 700;\r\n  color: #22c55e;\n}\n.legend-mobile-center .edge-label[data-v-373293d3] {\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  color: #2563eb;\n}\r\n\r\n/* ===========================\r\n   LEGEND DESKTOP (Vertical)\r\n   =========================== */\n.legend-desktop[data-v-373293d3] {\r\n  display: none;\r\n  background: #f9fafb;\r\n  border: 1px solid #e5e7eb;\r\n  border-radius: 0.5rem;\r\n  padding: 1rem;\r\n  min-width: 160px;\n}\n@media (min-width: 1024px) {\n.legend-desktop[data-v-373293d3] {\r\n    display: block;\n}\n}\n.legend-desktop-content[data-v-373293d3] {\r\n  display: flex;\r\n  gap: 0.75rem;\r\n  align-items: stretch;\r\n  justify-content: center;\r\n  height: 380px;\n}\r\n\r\n/* ===========================\r\n   LEGEND BAR (Desktop)\r\n   =========================== */\n.legend-bar-container[data-v-373293d3] {\r\n  position: relative;\r\n  width: 22px;\n}\n.legend-bar[data-v-373293d3] {\r\n  width: 22px;\r\n  height: 100%;\r\n  border-radius: 12px;\n}\n.legend-labels[data-v-373293d3] {\r\n  display: flex;\r\n  flex-direction: column;\r\n  justify-content: space-between;\r\n  font-size: 12px;\r\n  color: #4b5563;\r\n  text-align: center;\n}\r\n\r\n/* ===========================\r\n   PARAMETER BUTTONS\r\n   =========================== */\n.param-buttons[data-v-373293d3] {\r\n  display: flex;\r\n  gap: 0.5rem;\r\n  overflow-x: auto;\r\n  -webkit-overflow-scrolling: touch;\r\n  scrollbar-width: none;\r\n  margin-top: 0.75rem;\n}\n.param-buttons[data-v-373293d3]::-webkit-scrollbar {\r\n  display: none;\n}\n@media (min-width: 1024px) {\n.param-buttons[data-v-373293d3] {\r\n    gap: 0.25rem;\r\n    margin-top: 0;\n}\n}\n.param-btn[data-v-373293d3] {\r\n  flex: 1;\r\n  min-width: 0;\r\n  padding: 0.65rem 0.5rem;\r\n  font-size: 0.875rem;\r\n  /* Mobile: full rounded */\r\n  border-radius: 0.5rem;\r\n  border: 1px solid #d1d5db;\r\n  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);\r\n  transition: all 0.2s ease;\r\n  white-space: nowrap;\r\n  text-align: center;\n}\n@media (min-width: 1024px) {\n.param-btn[data-v-373293d3] {\r\n    flex: none;\r\n    padding: 0.5rem 1rem;\r\n    font-size: 0.875rem;\r\n    /* Desktop: only bottom rounded (attached to map) */\r\n    border-radius: 0;\r\n    border-bottom-left-radius: 0.375rem;\r\n    border-bottom-right-radius: 0.375rem;\r\n    border: none;\r\n    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);\n}\n}\n.param-active[data-v-373293d3] {\r\n  background-color: #ffffff;\r\n  color: #4b5563;\n}\n.param-inactive[data-v-373293d3] {\r\n  background-color: #e5e7eb;\r\n  color: #4b5563;\n}\n.param-inactive[data-v-373293d3]:active,\r\n.param-inactive[data-v-373293d3]:hover {\r\n  background-color: #d1d5db;\r\n  color: #374151;\n}\n.leaflet-container[data-v-373293d3] {\r\n  background: #f9fafb;\n}\r\n", ""]);
 // Exports
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
 

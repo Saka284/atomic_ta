@@ -199,18 +199,23 @@ const currentSensorDataSignature = computed(() =>
 
 // ===============================
 // COMPUTED: LEGEND GRADIENT STYLE
-// Gradient langsung dari threshold min ke max (skala sudah = threshold)
+// Bidirectional: hijau di tengah (Aman), merah di kedua ujung (Waspada/Kritis)
+// Bottom=min(Waspada) → Center=optimal(Aman) → Top=max(Waspada)
 // ===============================
 const legendGradientStyle = computed(() => {
-  // Gradient colors - langsung dari 0% ke 100% karena skala = threshold
+  // Symmetrical gradient: merah → biru → merah
   const gradientColors = [
-    { pos: 0, color: "#2563eb" },    // Biru (Aman)
-    { pos: 0.15, color: "#3b82f6" }, // Biru terang
-    { pos: 0.3, color: "#06b6d4" },  // Cyan (Normal)
-    { pos: 0.45, color: "#facc15" }, // Kuning (Waspada)
-    { pos: 0.6, color: "#fb923c" },  // Orange
-    { pos: 0.8, color: "#ef4444" },  // Merah
-    { pos: 1, color: "#dc2626" },    // Merah gelap (Kritis)
+    { pos: 0,    color: "#dc2626" },  // Min boundary (Kritis)
+    { pos: 0.1,  color: "#ef4444" },  // Merah
+    { pos: 0.2,  color: "#fb923c" },  // Orange (Waspada)
+    { pos: 0.3,  color: "#facc15" },  // Kuning
+    { pos: 0.4,  color: "#06b6d4" },  // Cyan (Normal)
+    { pos: 0.5,  color: "#2563eb" },  // Biru (Aman - center)
+    { pos: 0.6,  color: "#06b6d4" },  // Cyan (Normal)
+    { pos: 0.7,  color: "#facc15" },  // Kuning
+    { pos: 0.8,  color: "#fb923c" },  // Orange (Waspada)
+    { pos: 0.9,  color: "#ef4444" },  // Merah
+    { pos: 1,    color: "#dc2626" },  // Max boundary (Kritis)
   ];
   
   const stops = gradientColors.map(({ pos, color }) => `${color} ${pos * 100}%`);
@@ -220,16 +225,20 @@ const legendGradientStyle = computed(() => {
   };
 });
 
-// Horizontal gradient untuk mobile legend
+// Horizontal gradient untuk mobile legend (bidirectional)
 const legendGradientStyleHorizontal = computed(() => {
   const gradientColors = [
-    { pos: 0, color: "#2563eb" },
-    { pos: 0.15, color: "#3b82f6" },
-    { pos: 0.3, color: "#06b6d4" },
-    { pos: 0.45, color: "#facc15" },
-    { pos: 0.6, color: "#fb923c" },
-    { pos: 0.8, color: "#ef4444" },
-    { pos: 1, color: "#dc2626" },
+    { pos: 0,    color: "#dc2626" },
+    { pos: 0.1,  color: "#ef4444" },
+    { pos: 0.2,  color: "#fb923c" },
+    { pos: 0.3,  color: "#facc15" },
+    { pos: 0.4,  color: "#06b6d4" },
+    { pos: 0.5,  color: "#2563eb" },
+    { pos: 0.6,  color: "#06b6d4" },
+    { pos: 0.7,  color: "#facc15" },
+    { pos: 0.8,  color: "#fb923c" },
+    { pos: 0.9,  color: "#ef4444" },
+    { pos: 1,    color: "#dc2626" },
   ];
   
   const stops = gradientColors.map(({ pos, color }) => `${color} ${pos * 100}%`);
@@ -240,66 +249,80 @@ const legendGradientStyleHorizontal = computed(() => {
 });
 
 // ===============================
-// FUNGSI NORMALISASI NILAI SENSOR
+// FUNGSI NORMALISASI NILAI SENSOR (BIDIRECTIONAL)
 // ===============================
 /**
- * Mengkonversi nilai sensor mentah menjadi nilai 0-1.5 untuk warna heatmap
- * - 0 = di batas minimum threshold (biru/aman)
- * - 1 = di batas maximum threshold (orange/waspada)
- * - 1.5 = jauh di atas maximum (merah/kritis)
+ * Mengkonversi nilai sensor menjadi deviasi 0-1.5 dari titik tengah range
+ * BIDIRECTIONAL: semakin jauh dari tengah (baik ke atas maupun bawah) = semakin buruk
+ * - 0   = tepat di tengah range (hijau/aman)
+ * - 0.5 = setengah jalan ke boundary (cyan/normal)
+ * - 1.0 = tepat di batas min ATAU max (orange/waspada)
+ * - 1.5 = jauh di luar range (merah/kritis)
  * 
- * Contoh: threshold min=25, max=35
- * - nilai 25 → normalized = 0 (biru)
- * - nilai 30 → normalized = 0.5 (kuning)
- * - nilai 35 → normalized = 1 (orange)
- * - nilai 40 → normalized = 1.5 (merah kritis)
+ * Contoh: threshold min=25, max=35, center=30
+ * - nilai 30 → deviation = 0 (hijau, aman)
+ * - nilai 27.5 atau 32.5 → deviation = 0.5 (normal)
+ * - nilai 25 atau 35 → deviation = 1.0 (waspada)
+ * - nilai 20 atau 40 → deviation = 1.5 (kritis)
  */
 function normalizeValue(value) {
   const val = parseFloat(value);
   if (isNaN(val)) return 0;
   const thresholds = currentThresholds.value;
   
-  // Rumus normalisasi: (nilai - min) / (max - min)
-  let normalized = (val - thresholds.min) / (thresholds.max - thresholds.min);
+  const center = (thresholds.min + thresholds.max) / 2;
+  const halfRange = (thresholds.max - thresholds.min) / 2;
+  
+  if (halfRange === 0) return 0;
+  
+  // Deviasi dari titik tengah: 0 = di tengah, 1 = di boundary
+  let deviation = Math.abs(val - center) / halfRange;
   
   // Clamp: minimal 0, maksimal 1.5
-  return Math.min(Math.max(normalized, 0), 1.5);
+  return Math.min(deviation, 1.5);
 }
 
 // ===============================
-// FUNGSI PENENTUAN STATUS
+// FUNGSI PENENTUAN STATUS (BIDIRECTIONAL)
 // ===============================
 /**
- * Menentukan status dan warna marker berdasarkan nilai sensor
- * Menggunakan gradient yang SAMA dengan heatmap dan legend untuk konsistensi
- * Warna dihitung berdasarkan posisi normalized value di gradient
+ * Menentukan status dan warna marker berdasarkan deviasi dari titik tengah range
+ * BIDIRECTIONAL: di tengah = Aman, mendekati min/max = Waspada/Kritis
+ * Warna dihitung berdasarkan deviasi, konsisten dengan heatmap dan legend
  */
 function getStatus(value) {
   const val = parseFloat(value);
   const thresholds = currentThresholds.value;
-  const range = thresholds.max - thresholds.min;
+  const center = (thresholds.min + thresholds.max) / 2;
+  const halfRange = (thresholds.max - thresholds.min) / 2;
   
-  // Normalisasi nilai: 0 = min, 1 = max
-  let normalized = (val - thresholds.min) / range;
-  normalized = Math.max(0, Math.min(1, normalized)); // Clamp 0-1
+  if (halfRange === 0) {
+    return { text: t("heatmap.normal"), color: 'rgb(37, 99, 235)' };
+  }
   
-  // Gradient colors SAMA dengan heatmap dan legend
+  // Deviasi dari titik tengah: 0 = di tengah, 1 = di boundary min/max
+  let deviation = Math.abs(val - center) / halfRange;
+  deviation = Math.max(0, Math.min(1.5, deviation)); // Clamp 0-1.5
+  
+  // Clamp untuk warna (0-1)
+  const deviationClamped = Math.min(1, deviation);
+  
+  // Gradient colors: biru (deviasi 0) → merah (deviasi 1)
   const gradientColors = [
     { stop: 0.0, r: 37, g: 99, b: 235 },    // #2563eb - Biru (Aman)
-    { stop: 0.15, r: 59, g: 130, b: 246 },  // #3b82f6 - Biru terang
-    { stop: 0.3, r: 6, g: 182, b: 212 },    // #06b6d4 - Cyan (Normal)
-    { stop: 0.45, r: 250, g: 204, b: 21 },  // #facc15 - Kuning (Waspada)
-    { stop: 0.6, r: 251, g: 146, b: 60 },   // #fb923c - Orange
+    { stop: 0.2, r: 6, g: 182, b: 212 },    // #06b6d4 - Cyan (Normal)
+    { stop: 0.4, r: 250, g: 204, b: 21 },   // #facc15 - Kuning
+    { stop: 0.6, r: 251, g: 146, b: 60 },   // #fb923c - Orange (Waspada)
     { stop: 0.8, r: 239, g: 68, b: 68 },    // #ef4444 - Merah
     { stop: 1.0, r: 220, g: 38, b: 38 },    // #dc2626 - Merah gelap (Kritis)
   ];
   
-  // Interpolasi warna berdasarkan normalized value
+  // Interpolasi warna berdasarkan deviasi
   let lower = gradientColors[0];
   let upper = gradientColors[gradientColors.length - 1];
   
   for (let i = 0; i < gradientColors.length - 1; i++) {
-    if (normalized >= gradientColors[i].stop && normalized <= gradientColors[i + 1].stop) {
+    if (deviationClamped >= gradientColors[i].stop && deviationClamped <= gradientColors[i + 1].stop) {
       lower = gradientColors[i];
       upper = gradientColors[i + 1];
       break;
@@ -307,7 +330,7 @@ function getStatus(value) {
   }
   
   const rangeStop = upper.stop - lower.stop;
-  const ratio = rangeStop === 0 ? 0 : (normalized - lower.stop) / rangeStop;
+  const ratio = rangeStop === 0 ? 0 : (deviationClamped - lower.stop) / rangeStop;
   
   const r = Math.round(lower.r + (upper.r - lower.r) * ratio);
   const g = Math.round(lower.g + (upper.g - lower.g) * ratio);
@@ -315,12 +338,12 @@ function getStatus(value) {
   
   const color = `rgb(${r}, ${g}, ${b})`;
   
-  // Tentukan text status berdasarkan zona
+  // Tentukan text status berdasarkan deviasi
   let text;
-  if (normalized <= 0.3) text = t("heatmap.safe");
-  else if (normalized <= 0.5) text = t("heatmap.normal");
-  else if (normalized <= 1) text = t("heatmap.warning");
-  else text = t("heatmap.critical");
+  if (deviation <= 0.3) text = t("heatmap.safe");         // Dekat tengah = Aman
+  else if (deviation <= 0.6) text = t("heatmap.normal");   // Agak jauh = Normal
+  else if (deviation <= 1.0) text = t("heatmap.warning");  // Mendekati boundary = Waspada
+  else text = t("heatmap.critical");                        // Di luar range = Kritis
   
   return { text, color };
 }
@@ -469,21 +492,20 @@ let customHeatLayer = null;
 const HEATMAP_RADIUS = 300;
 
 // ===============================
-// GRADIENT COLORS UNTUK HEATMAP
+// GRADIENT COLORS UNTUK HEATMAP (BIDIRECTIONAL)
 // ===============================
 /**
- * Definisi warna gradient berdasarkan nilai normalized (0-1.5)
+ * Definisi warna gradient berdasarkan deviasi (0-1.5)
  * Format: { stop, r, g, b }
- * - stop: posisi di gradient (0 = nilai min, 1 = nilai max)
+ * - stop: deviasi dari center (0 = di tengah/aman, 1 = di boundary/waspada)
  * - r, g, b: komponen warna RGB
  */
-// HARUS SAMA dengan legend gradient untuk konsistensi warna!
+// HARUS SAMA dengan getStatus gradient untuk konsistensi warna!
 const heatmapGradientColors = [
-  { stop: 0.0, r: 37, g: 99, b: 235 },    // #2563eb - Biru (Aman)
-  { stop: 0.15, r: 59, g: 130, b: 246 },  // #3b82f6 - Biru terang
-  { stop: 0.3, r: 6, g: 182, b: 212 },    // #06b6d4 - Cyan (Normal)
-  { stop: 0.45, r: 250, g: 204, b: 21 },  // #facc15 - Kuning (Waspada)
-  { stop: 0.6, r: 251, g: 146, b: 60 },   // #fb923c - Orange
+  { stop: 0.0, r: 37, g: 99, b: 235 },    // #2563eb - Biru (Aman - di tengah)
+  { stop: 0.2, r: 6, g: 182, b: 212 },    // #06b6d4 - Cyan (Normal)
+  { stop: 0.4, r: 250, g: 204, b: 21 },   // #facc15 - Kuning
+  { stop: 0.6, r: 251, g: 146, b: 60 },   // #fb923c - Orange (Waspada)
   { stop: 0.8, r: 239, g: 68, b: 68 },    // #ef4444 - Merah
   { stop: 1.0, r: 220, g: 38, b: 38 },    // #dc2626 - Merah gelap (Kritis)
 ];
@@ -1130,20 +1152,26 @@ watch(
             ></div>
           </div>
 
-          <!-- LEGEND MOBILE (Horizontal, always visible on mobile) -->
+          <!-- LEGEND MOBILE (Horizontal, bidirectional) -->
           <div class="legend-mobile">
             <p class="legend-mobile-title">{{ currentConfig.label }} ({{ currentConfig.unit }})</p>
             <div class="legend-mobile-content">
               <div class="legend-mobile-edge">
                 <span class="edge-value">{{ currentConfig.min }}</span>
-                <span class="edge-label">{{ t("heatmap.safe") }}</span>
+                <span class="edge-label">{{ t("heatmap.warning") }}</span>
               </div>
               
-              <div class="legend-mobile-bar" :style="legendGradientStyleHorizontal"></div>
+              <div class="legend-mobile-bar-wrapper">
+                <div class="legend-mobile-bar" :style="legendGradientStyleHorizontal"></div>
+                <div class="legend-mobile-center">
+                  <span class="edge-value">{{ Math.round((currentConfig.min + currentConfig.max) / 2) }}</span>
+                  <span class="edge-label">{{ t("heatmap.safe") }}</span>
+                </div>
+              </div>
               
               <div class="legend-mobile-edge">
                 <span class="edge-value">{{ currentConfig.max }}</span>
-                <span class="edge-label">{{ t("heatmap.critical") }}</span>
+                <span class="edge-label">{{ t("heatmap.warning") }}</span>
               </div>
             </div>
           </div>
@@ -1155,18 +1183,18 @@ watch(
             </p>
 
             <div class="legend-desktop-content">
-              <!-- Legend Bar (skala langsung dari threshold min ke max) -->
+              <!-- Legend Bar (bidirectional: merah di ujung, hijau di tengah) -->
               <div class="legend-bar-container">
                 <div class="legend-bar" :style="legendGradientStyle"></div>
               </div>
               
-              <!-- Scale Labels (dynamic) -->
+              <!-- Scale Labels (bidirectional) -->
               <div class="legend-labels">
-                <span><b>{{ currentConfig.max }}</b><br />{{ t("heatmap.critical") }}</span>
-                <span>{{ Math.round(currentConfig.max * 0.75) }}</span>
-                <span>{{ Math.round(currentConfig.max * 0.5) }}</span>
-                <span>{{ Math.round(currentConfig.max * 0.25) }}</span>
-                <span><b>{{ currentConfig.min }}</b><br />{{ t("heatmap.safe") }}</span>
+                <span><b>{{ currentConfig.max }}</b><br />{{ t("heatmap.warning") }}</span>
+                <span>{{ Math.round((currentConfig.min + currentConfig.max) / 2 + (currentConfig.max - currentConfig.min) / 4) }}</span>
+                <span style="color: #2563eb; font-weight: 600;"><b>{{ Math.round((currentConfig.min + currentConfig.max) / 2) }}</b><br />{{ t("heatmap.safe") }}</span>
+                <span>{{ Math.round((currentConfig.min + currentConfig.max) / 2 - (currentConfig.max - currentConfig.min) / 4) }}</span>
+                <span><b>{{ currentConfig.min }}</b><br />{{ t("heatmap.warning") }}</span>
               </div>
             </div>
             
@@ -1314,12 +1342,40 @@ watch(
   color: #6b7280;
 }
 
-.legend-mobile-bar {
+.legend-mobile-bar-wrapper {
   position: relative;
   flex: 1;
   max-width: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.legend-mobile-bar {
+  position: relative;
+  width: 100%;
   height: 16px;
   border-radius: 8px;
+}
+
+.legend-mobile-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+}
+
+.legend-mobile-center .edge-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #22c55e;
+}
+
+.legend-mobile-center .edge-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #2563eb;
 }
 
 /* ===========================
