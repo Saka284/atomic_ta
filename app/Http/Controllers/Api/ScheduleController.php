@@ -42,17 +42,22 @@ class ScheduleController extends Controller
 
         // Build query
         $query = Schedule::where('gh_id', $request->gh_id);
+        $scheduleIds = [];
 
         // Filter by schedule_id if provided
         if ($request->has('schedule_id') && $request->schedule_id !== null) {
-            $scheduleIds = is_array($request->schedule_id) 
+            $scheduleIds = is_array($request->schedule_id)
                 ? $request->schedule_id 
                 : [$request->schedule_id];
+            $scheduleIds = array_values(array_map('intval', $scheduleIds));
+            sort($scheduleIds);
             $query->whereIn('id', $scheduleIds);
         }
 
-        // Cache Key: schedule_gateway_{gh_id}
-        $cacheKey = "schedule_gateway_{$request->gh_id}";
+        $cacheKey = 'schedule_gateway_' . md5(json_encode([
+            'gh_id' => (int) $request->gh_id,
+            'schedule_id' => $scheduleIds,
+        ]));
         
         // Cache for 60 seconds (Gateway polling optimization)
         $response = Cache::remember($cacheKey, 60, function () use ($query, $request) {

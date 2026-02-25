@@ -44,11 +44,17 @@ class ApiController extends Controller
             WHERE node_id = ? 
             ORDER BY id DESC LIMIT 1
         ", [$validated['node_id']]);
+        $minimumIntervalMinutes = max(0, (int) config('app.sensor_min_upload_interval_minutes', 10));
 
-        if ($last_data && Carbon::parse($last_data->created_at)->addMinutes(10) > now()) {
+        if (
+            $minimumIntervalMinutes > 0
+            && $last_data
+            && Carbon::parse($last_data->created_at)->addMinutes($minimumIntervalMinutes) > now()
+        ) {
+            $minuteLabel = $minimumIntervalMinutes === 1 ? 'minute' : 'minutes';
             return response()->json([
                 'success' => false,
-                'message' => 'Server only accepts data once per 10 minutes per node',
+                'message' => "Server only accepts data once per {$minimumIntervalMinutes} {$minuteLabel} per node",
                 'errors' => $validator->errors()
             ], 422);
         }

@@ -8,6 +8,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use App\Models\User;
 use App\Models\Greenhouse;
+use App\Models\Schedule;
 use App\Models\Sensor;
 use Tests\TestCase;
 
@@ -96,6 +97,32 @@ class ExternalApiTest extends TestCase
     }
 
     /**
+     * Test OTA upload supports node_id alias
+     */
+    public function test_ota_upload_with_node_id_alias()
+    {
+        Storage::fake('public');
+        $file = UploadedFile::fake()->create('firmware.bin', 256, 'application/octet-stream');
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->post('/api/files', [
+            'status' => 1,
+            'version' => '1.2.3',
+            'node_id' => 7,
+            'file' => $file,
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'status' => 1,
+                'node_id' => 7,
+                'sensor_id' => 7,
+                'version' => '1.2.3',
+            ]);
+    }
+
+    /**
      * Test Save Schedules (POST /api/schedules)
      */
     public function test_save_schedules()
@@ -131,12 +158,86 @@ class ExternalApiTest extends TestCase
     }
 
     /**
+     * Test Gateway cache key respects schedule_id filter
+     */
+    public function test_gateway_schedule_cache_respects_schedule_id_filter()
+    {
+        $scheduleA = Schedule::create([
+            'gh_id' => $this->greenhouse->id,
+            'enabled' => true,
+            'start_time' => '08:00:00',
+            'end_time' => '09:00:00',
+            'relay_exhaust' => 'on',
+            'relay_dehumidifier' => 'off',
+            'relay_blower' => 'threshold',
+        ]);
+
+        $scheduleB = Schedule::create([
+            'gh_id' => $this->greenhouse->id,
+            'enabled' => true,
+            'start_time' => '09:00:00',
+            'end_time' => '10:00:00',
+            'relay_exhaust' => 'off',
+            'relay_dehumidifier' => 'on',
+            'relay_blower' => 'threshold',
+        ]);
+
+        $responseA = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->postJson('/api/gateway/schedule', [
+            'gh_id' => $this->greenhouse->id,
+            'schedule_id' => [$scheduleA->id],
+        ]);
+
+        $responseA->assertStatus(200)
+            ->assertJsonPath('schedules.0.id', $scheduleA->id);
+
+        $responseB = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->postJson('/api/gateway/schedule', [
+            'gh_id' => $this->greenhouse->id,
+            'schedule_id' => [$scheduleB->id],
+        ]);
+
+        $responseB->assertStatus(200)
+            ->assertJsonPath('schedules.0.id', $scheduleB->id);
+    }
+
+    /**
+     * Test sensor throttle can be disabled via config
+     */
+    public function test_sensor_upload_interval_can_be_disabled()
+    {
+        config(['app.sensor_min_upload_interval_minutes' => 0]);
+
+        $payload = [
+            'gh_id' => $this->greenhouse->id,
+            'node_id' => 99,
+            'temperature' => 25.5,
+            'humidity' => 60,
+            'light_intensity' => 1000,
+            'rssi' => -60,
+            'recorded_at' => now()->toDateTimeString(),
+        ];
+
+        $firstResponse = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->postJson('/api/sensor', $payload);
+        $firstResponse->assertStatus(200)->assertJson(['success' => true]);
+
+        $secondResponse = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->postJson('/api/sensor', $payload);
+        $secondResponse->assertStatus(200)->assertJson(['success' => true]);
+    }
+
+    /**
      * Test Gateway Get Schedule (POST /api/gateway/schedule)
      */
     public function test_gateway_get_schedule()
     {
         // Create a schedule first
-        \App\Models\Schedule::create([
+        Schedule::create([
             'gh_id' => $this->greenhouse->id,
             'enabled' => true,
             'start_time' => '08:00:00',

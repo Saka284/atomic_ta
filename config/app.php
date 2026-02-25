@@ -69,6 +69,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Sensor Upload Minimum Interval (Minutes)
+    |--------------------------------------------------------------------------
+    |
+    | Set to 0 to disable server-side upload throttling for sensor endpoint.
+    |
+    */
+    'sensor_min_upload_interval_minutes' => max(0, (int) env('SENSOR_MIN_UPLOAD_INTERVAL_MINUTES', 10)),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |
