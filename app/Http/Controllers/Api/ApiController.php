@@ -130,7 +130,7 @@ class ApiController extends Controller
         $validated = $validator->validate();
 
         try {
-            $imageData = null;
+            $imagePathForDb = null;
             $timestamp = now()->format('YmdHis');
             $disk = Storage::disk('public');
             $disk->makeDirectory('camera');
@@ -149,33 +149,18 @@ class ApiController extends Controller
                 $format = $matches[1]; // "png", "jpg", atau "jpeg"
 
                 // Decode base64
-                $imageData = substr($base64String, strpos($base64String, ',') + 1);
-                $imageData = base64_decode($imageData, true);
+                $originalBinary = substr($base64String, strpos($base64String, ',') + 1);
+                $originalBinary = base64_decode($originalBinary, true);
 
-                if ($imageData === false) {
+                if ($originalBinary === false) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Invalid Base64 data.'
                     ], 400);
                 }
 
-                // Tentukan path file sementara
-                $originalRelativePath = "camera/{$timestamp}.{$format}";
-                $originalPath = $disk->path($originalRelativePath);
-                if (file_put_contents($originalPath, $imageData) === false) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Failed to save image.'
-                    ], 500);
-                }
-
-                // Load gambar sesuai format
-                if ($format === 'png') {
-                    $image = imagecreatefrompng($originalPath);
-                } else {
-                    $image = imagecreatefromjpeg($originalPath);
-                }
-
+                // Create image resource from decoded binary.
+                $image = imagecreatefromstring($originalBinary);
                 if (!$image) {
                     return response()->json([
                         'success' => false,
@@ -183,16 +168,24 @@ class ApiController extends Controller
                     ], 500);
                 }
 
-                // 🔥 Perbaiki jika PNG menggunakan indexed color (palette-based)
+                // Fix indexed-color PNG before converting to WebP.
                 if ($format === 'png' && imageistruecolor($image) === false) {
-                    imagepalettetotruecolor($image); // Ubah indexed color PNG ke RGB
+                    imagepalettetotruecolor($image);
                 }
 
-                // Simpan sebagai WebP
-                $webpRelativePath = "camera/{$timestamp}.webp";
-                $webpPath = $disk->path($webpRelativePath);
-                if (!imagewebp($image, $webpPath, 50)) { // Quality WebP 50%
+                $webpTempPath = tempnam(sys_get_temp_dir(), 'camera-webp-');
+                if ($webpTempPath === false) {
                     imagedestroy($image);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to prepare image conversion.'
+                    ], 500);
+                }
+
+                // Encode temporary WebP so we can compare output size.
+                if (!imagewebp($image, $webpTempPath, 50)) {
+                    imagedestroy($image);
+                    @unlink($webpTempPath);
                     return response()->json([
                         'success' => false,
                         'message' => 'Failed to encode WebP image.'
@@ -200,20 +193,35 @@ class ApiController extends Controller
                 }
                 imagedestroy($image);
 
-                // Bandingkan ukuran file
-                $sizeOriginal = filesize($originalPath);
-                $sizeWebp = filesize($webpPath);
-
-                if ($sizeWebp < $sizeOriginal) {
-                    $disk->delete($originalRelativePath); // Hapus file asli jika WebP lebih kecil
-                    $imageData = "/storage/camera/{$timestamp}.webp";
-                } else {
-                    $disk->delete($webpRelativePath); // Hapus WebP jika lebih besar
-                    $imageData = "/storage/camera/{$timestamp}.{$format}";
+                $webpBinary = @file_get_contents($webpTempPath);
+                @unlink($webpTempPath);
+                if ($webpBinary === false) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to read converted image.'
+                    ], 500);
                 }
+
+                $sizeOriginal = strlen($originalBinary);
+                $sizeWebp = strlen($webpBinary);
+                $useWebp = $sizeWebp < $sizeOriginal;
+
+                $relativePath = $useWebp
+                    ? "camera/{$timestamp}.webp"
+                    : "camera/{$timestamp}.{$format}";
+                $finalBinary = $useWebp ? $webpBinary : $originalBinary;
+
+                if (!$disk->put($relativePath, $finalBinary, 'public')) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to save image.'
+                    ], 500);
+                }
+
+                $imagePathForDb = $disk->url($relativePath);
             }
 
-            if (!$imageData) {
+            if (!$imagePathForDb) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Image is required'
@@ -224,7 +232,7 @@ class ApiController extends Controller
                 'gh_id' => $validated['gh_id'],
                 'isFoggy' => $validated['isFoggy'],
                 'recorded_at' => $validated['recorded_at'],
-                'image' => $imageData,
+                'image' => $imagePathForDb,
                 'confidence' => $request->confidence ?? null,
             ]);
 
@@ -1027,7 +1035,7 @@ class ApiController extends Controller
             $formattedData = array_map(function ($camera) {
                 $camera->recorded_at = $camera->recorded_at_24h ?? '-';
                 unset($camera->recorded_at_24h);
-                $camera->image = url($camera->image);
+                $camera->image = $this->toPublicMediaUrl($camera->image);
                 $camera->status = $camera->isFoggy ? 'Berkabut' : 'Tidak Berkabut';
                 return $camera;
             }, $cameraData);
@@ -1045,6 +1053,21 @@ class ApiController extends Controller
         });
 
         return response()->json($payload);
+    }
+
+    private function toPublicMediaUrl(?string $path): ?string
+    {
+        if (!$path) {
+            return $path;
+        }
+
+        if (preg_match('/^https?:\/\//i', $path)) {
+            return $path;
+        }
+
+        $baseUrl = rtrim((string) config('app.media_url', config('app.url')), '/');
+
+        return $baseUrl . '/' . ltrim($path, '/');
     }
 
     public function updateThreshold(Request  $request)

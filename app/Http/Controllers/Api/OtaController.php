@@ -45,8 +45,8 @@ class OtaController extends Controller
             // Store file in public storage
             $path = $request->file('file')->storeAs('files', $filename, 'public');
             
-            // Build full URL
-            $fileUrl = url("storage/{$path}");
+            // Build URL using storage disk configuration
+            $fileUrl = Storage::disk('public')->url($path);
 
             \Log::info("[OTA] Firmware uploaded: {$filename}, version: {$validated['version']}");
 

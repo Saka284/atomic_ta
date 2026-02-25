@@ -8,6 +8,8 @@ use App\Exports\SensorDataExport; // Export Sensor (Tetap dipakai)
 use Maatwebsite\Excel\Facades\Excel;
 use ZipArchive;                   // Library buat bikin ZIP
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class ExportController extends Controller
@@ -84,6 +86,7 @@ class ExportController extends Controller
             foreach ($data as $row) {
                 // Logika status (Cek apakah foggy atau tidak)
                 $statusText = $row->isFoggy ? 'Berkabut' : 'Tidak Berkabut';
+                $imagePath = parse_url((string) $row->image, PHP_URL_PATH) ?: (string) $row->image;
                 
                 // Siapkan baris data
                 $csvRow = [
@@ -91,7 +94,7 @@ class ExportController extends Controller
                     $row->recorded_at,
                     $row->confidence ?? '-',
                     $statusText,
-                    basename($row->image) // Ambil nama filenya saja
+                    basename($imagePath) // Ambil nama filenya saja
                 ];
                 $csvContent .= implode(',', $csvRow) . "\n";
             }
@@ -101,11 +104,36 @@ class ExportController extends Controller
 
             // --- B. MASUKKAN GAMBAR ASLI KE ZIP ---
             foreach ($data as $row) {
-                // Pastikan file gambarnya ada di folder public laptop kakak
-                if ($row->image && file_exists(public_path($row->image))) {
-                    $fullPath = public_path($row->image);
-                    // Masukkan ke dalam folder 'images' di dalam ZIP
-                    $zip->addFile($fullPath, 'images/' . basename($row->image));
+                if (!$row->image) {
+                    continue;
+                }
+
+                $imagePath = parse_url((string) $row->image, PHP_URL_PATH) ?: (string) $row->image;
+                $imageName = basename($imagePath);
+                if (!$imageName || $imageName === '.' || $imageName === '/') {
+                    continue;
+                }
+
+                // Local first (works when storage is shared on the same host)
+                $localPath = public_path(ltrim($imagePath, '/'));
+                if (is_file($localPath)) {
+                    $zip->addFile($localPath, 'images/' . $imageName);
+                    continue;
+                }
+
+                // Fallback to configured media host for centralized storage
+                $imageUrl = $this->resolvePublicMediaUrl((string) $row->image);
+                try {
+                    $response = Http::timeout(10)->get($imageUrl);
+                    if ($response->successful()) {
+                        $zip->addFromString('images/' . $imageName, $response->body());
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('[EXPORT_CAMERA] Failed to fetch image for ZIP', [
+                        'image' => $row->image,
+                        'url' => $imageUrl,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
             }
 
@@ -116,5 +144,16 @@ class ExportController extends Controller
 
         // 4. Download & Hapus File Sementara
         return response()->download($zipPath)->deleteFileAfterSend(true);
+    }
+
+    private function resolvePublicMediaUrl(string $imageReference): string
+    {
+        if (preg_match('/^https?:\/\//i', $imageReference)) {
+            return $imageReference;
+        }
+
+        $baseUrl = rtrim((string) config('app.media_url', config('app.url')), '/');
+
+        return $baseUrl . '/' . ltrim($imageReference, '/');
     }
 }

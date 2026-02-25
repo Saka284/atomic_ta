@@ -39,12 +39,27 @@ class CameraDataExport implements FromCollection, WithHeadings
             return [
                 'gh_id' => $row->gh_id,
                 'recorded_at' => $row->recorded_at,
-                'image_url' => asset($row->image) ?? '-',
+                'image_url' => $this->buildPublicMediaUrl($row->image),
                 'status' => $row->isFoggy ? 'Berkabut' : 'Tidak Berkabut',
             ];
         }, $results);
 
         return collect($data);
+    }
+
+    private function buildPublicMediaUrl(?string $path): string
+    {
+        if (!$path) {
+            return '-';
+        }
+
+        if (preg_match('/^https?:\/\//i', $path)) {
+            return $path;
+        }
+
+        $baseUrl = rtrim((string) config('app.media_url', config('app.url')), '/');
+
+        return $baseUrl . '/' . ltrim($path, '/');
     }
 
     public function headings(): array

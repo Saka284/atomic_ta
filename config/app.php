@@ -58,6 +58,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Public Media Base URL
+    |--------------------------------------------------------------------------
+    |
+    | Used to build absolute URLs for media paths stored in the database.
+    | Set this to your central media host when serving the app on subdomains.
+    |
+    */
+    'media_url' => env('MEDIA_BASE_URL') ?: (env('ASSET_URL') ?: env('APP_URL', 'http://localhost')),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |
