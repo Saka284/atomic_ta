@@ -117,7 +117,7 @@ class BenchmarkSeeder extends Seeder
                     'gh_id' => $gh->id,
                     'image' => '/images/no-image.svg',
                     'isFoggy' => (bool) ($i % 2),
-                    'fog_percentage' => $this->randomFog(),
+                    'confidence' => $this->randomFog(),
                     'recorded_at' => $recordedAt,
                     'created_at' => $recordedAt,
                     'updated_at' => $recordedAt,

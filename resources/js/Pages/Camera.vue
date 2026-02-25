@@ -141,8 +141,8 @@ const columnDefs = computed(() => [
         flex: 1,
     },
     {
-        headerName: t("camera.fog_accuracy"),
-        field: "fog_percentage",
+        headerName: "Akurasi Deteksi",
+        field: "confidence",
         sortable: true,
         resizable: false,
         suppressMovable: true,
@@ -741,25 +741,7 @@ onUnmounted(() => {
                                 </p>
                             </div>
 
-                            <div class="flex flex-col items-center md:items-end">
-                                <div
-                                    v-if="
-                                        rowImageMap[greenhouse.id]
-                                            ?.fog_percentage !== null &&
-                                        rowImageMap[greenhouse.id]
-                                            ?.fog_percentage !== undefined
-                                    "
-                                    class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm"
-                                >
-                                    <span class="text-xs font-bold">
-                                        {{ t("camera.accuracy") }}:
-                                        {{
-                                            rowImageMap[greenhouse.id]
-                                                ?.fog_percentage
-                                        }}%
-                                    </span>
-                                </div>
-                            </div>
+                            
                         </div>
 
                         <div class="flex flex-col gap-4 w-full">

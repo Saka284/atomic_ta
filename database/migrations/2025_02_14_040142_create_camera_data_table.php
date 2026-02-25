@@ -18,7 +18,7 @@ class CreateCameraDataTable extends Migration
             $table->foreignId('gh_id')->constrained('greenhouses', 'id');
             $table->longText('image');
             $table->boolean('isFoggy')->default(false);
-            $table->double('fog_percentage')->nullable();
+            $table->double('confidence')->nullable();
             $table->dateTime('recorded_at');
             $table->timestamps();
         });
