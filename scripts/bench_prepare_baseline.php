@@ -40,6 +40,28 @@ $run = function (string $cmd, ?string $cwd = null): int {
     return proc_close($process);
 };
 
+$readEnvValue = function (string $path, string $key): ?string {
+    if (!file_exists($path)) {
+        return null;
+    }
+
+    $lines = @file($path, FILE_IGNORE_NEW_LINES);
+    if ($lines === false) {
+        return null;
+    }
+
+    foreach ($lines as $line) {
+        if (preg_match('/^\s*' . preg_quote($key, '/') . '\s*=\s*(.*)\s*$/', $line, $matches) !== 1) {
+            continue;
+        }
+
+        $value = trim($matches[1]);
+        return trim($value, "\"'");
+    }
+
+    return null;
+};
+
 // Clean old worktree if exists
 if (is_dir($worktreeDir)) {
     $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
@@ -79,6 +101,22 @@ if (!file_exists($envPath)) {
     if ($source && file_exists($source)) {
         copy($source, $envPath);
     }
+}
+
+$dbName = $readEnvValue($envPath, 'DB_DATABASE');
+$appEnv = $readEnvValue($envPath, 'APP_ENV');
+$allowDestructive = getenv('BENCH_ALLOW_DESTRUCTIVE') === '1';
+$safeByDbName = is_string($dbName) && preg_match('/(test|bench)/i', $dbName) === 1;
+$safeByAppEnv = is_string($appEnv) && strtolower($appEnv) === 'testing';
+
+if (!$allowDestructive && !$safeByDbName && !$safeByAppEnv) {
+    fwrite(
+        STDERR,
+        "Refusing to run migrate:fresh on non-test database '{$dbName}'. ".
+        "Use BENCH_ALLOW_DESTRUCTIVE=1 to override intentionally.\n"
+    );
+    $run('git worktree remove --force ' . escapeshellarg($worktreeDir), $root);
+    exit(1);
 }
 
 // Install dependencies if vendor missing
