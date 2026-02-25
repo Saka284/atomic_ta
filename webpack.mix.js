@@ -22,6 +22,11 @@ mix.js("resources/js/app.js", "public/js")
         "@": "resources/js",
     })
     .webpackConfig({
+        resolve: {
+            alias: {
+                axios$: require.resolve("axios/dist/browser/axios.cjs"),
+            },
+        },
         plugins: [
             new webpack.DefinePlugin({
                 __VUE_OPTIONS_API__: true,

@@ -452,7 +452,6 @@ const exportData = async () => {
                             :theme="themeAlpine"
                             :suppressMenuHide="true"
                             :suppressPaginationPanel="true"
-                            @grid-ready="onGridReady"
                             @sort-changed="onSortChanged"
                             @filter-changed="onFilterChanged"
                         >

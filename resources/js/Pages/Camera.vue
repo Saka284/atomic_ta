@@ -464,6 +464,16 @@ const fetchData = async (gh_id, { force = false } = {}) => {
     }
 };
 
+const loadGreenhouseDataIfNeeded = (gh_id, { force = false } = {}) => {
+    const parsedGhId = Number(gh_id);
+    if (!Number.isFinite(parsedGhId) || parsedGhId <= 0) {
+        return;
+    }
+
+    ensurePaginationState(parsedGhId);
+    fetchData(parsedGhId, { force });
+};
+
 onMounted(() => {
     fetchAllGreenhouses();
 });
