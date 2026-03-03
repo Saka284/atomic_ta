@@ -91,6 +91,7 @@ class OtaController extends Controller
             \Log::info("[OTA] Firmware uploaded: {$filename}, version: {$validated['version']}");
 
             return response()->json([
+                'firmware_url' => $fileUrl, // alias untuk kompatibilitas response OTA check
                 'file_url' => $fileUrl,
                 'status' => (int) $status,
                 'sensor_id' => $nodeId, // backward compatibility
@@ -112,19 +113,32 @@ class OtaController extends Controller
     /**
      * Get latest firmware info for a node
      * 
-     * GET /api/get-file/{nodeId}
+     * Supports:
+     * - GET /api/get-file/{nodeId}
+     * - GET /api/get-file?node_id=123
+     * - GET /api/get-file?sensor_id=123
+     * - GET /api/get-file?fw_id=123 (legacy param)
      * 
-     * @param int $nodeId
+     * @param Request $request
+     * @param mixed $nodeId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getFirmwareInfo($nodeId)
+    public function getFirmwareInfo(Request $request, $nodeId = null)
     {
-        $nodeId = (int) $nodeId;
+        if ($nodeId === null || $nodeId === '') {
+            $nodeId = $request->query('node_id', $request->query('sensor_id', $request->query('fw_id')));
+        }
+
+        $nodeId = is_numeric($nodeId) ? (int) $nodeId : 0;
         if ($nodeId <= 0) {
             return response()->json([
-                'success' => false,
-                'message' => 'Invalid node id',
-            ], 422);
+                'version' => '',
+                'firmware_url' => '',
+                'file_url' => '',
+                'status' => 0,
+                'node_id' => 0,
+                'message' => 'Missing or invalid node id',
+            ], 200);
         }
 
         $firmware = null;
@@ -152,6 +166,7 @@ class OtaController extends Controller
             return response()->json([
                 'version' => '',
                 'firmware_url' => '',
+                'file_url' => '',
                 'status' => 0, // No update available
                 'node_id' => $nodeId,
             ]);
@@ -160,6 +175,7 @@ class OtaController extends Controller
         return response()->json([
             'version' => $firmware->version,
             'firmware_url' => $firmware->file_url,
+            'file_url' => $firmware->file_url, // alias for legacy clients
             'status' => 1,
             'node_id' => $nodeId,
         ]);

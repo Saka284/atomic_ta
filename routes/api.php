@@ -37,7 +37,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/export-camera', [ExportController::class, 'camera']);
     
     // OTA Firmware update check endpoint
-    Route::get('/get-file/{nodeId}', [OtaController::class, 'getFirmwareInfo']);
+    // Backward compatible:
+    // - /api/get-file/{nodeId}
+    // - /api/get-file?node_id=...
+    Route::get('/get-file/{nodeId?}', [OtaController::class, 'getFirmwareInfo']);
     
     // OTA Firmware upload endpoint
     Route::post('/files', [OtaController::class, 'uploadFirmware']);
