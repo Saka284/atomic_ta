@@ -48,6 +48,7 @@ const actuators = computed(() => {
             icon: "fas fa-fan",
             color: "text-yellow-500",
             status: Boolean(currentStatus.exhaust?.status),
+            gatewayOnline: Boolean(currentStatus.exhaust?.gateway_online),
         },
         {
             key: "dehumidifier",
@@ -55,6 +56,7 @@ const actuators = computed(() => {
             icon: "fas fa-tint",
             color: "text-cyan-500",
             status: Boolean(currentStatus.dehumidifier?.status),
+            gatewayOnline: Boolean(currentStatus.dehumidifier?.gateway_online),
         },
         {
             key: "blower",
@@ -62,6 +64,7 @@ const actuators = computed(() => {
             icon: "fas fa-fan",
             color: "text-red-500",
             status: Boolean(currentStatus.blower?.status),
+            gatewayOnline: Boolean(currentStatus.blower?.gateway_online),
         },
     ];
 });
@@ -679,15 +682,27 @@ onUnmounted(() => {
                                 </div>
                             </div>
 
-                            <div
-                                :class="actuator.status ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
-                                class="px-3 py-1 text-xs font-bold rounded-full"
-                            >
-                                {{
-                                    actuator.status
-                                        ? t("monitoring.on")
-                                        : t("monitoring.off")
-                                }}
+                            <div class="flex flex-col items-end gap-1">
+                                <div
+                                    :class="actuator.status ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+                                    class="px-3 py-1 text-xs font-bold rounded-full"
+                                >
+                                    {{
+                                        actuator.status
+                                            ? t("monitoring.on")
+                                            : t("monitoring.off")
+                                    }}
+                                </div>
+                                <p
+                                    :class="actuator.gatewayOnline ? 'text-green-600' : 'text-red-600'"
+                                    class="text-[11px] font-semibold uppercase tracking-wide"
+                                >
+                                    {{
+                                        actuator.gatewayOnline
+                                            ? t("monitoring.online")
+                                            : t("monitoring.offline")
+                                    }}
+                                </p>
                             </div>
                         </div>
                     </div>

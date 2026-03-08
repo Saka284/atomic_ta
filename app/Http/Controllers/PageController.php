@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CameraData;
+use App\Models\DeviceStatus;
 use App\Models\Greenhouse;
 use App\Models\Schedule;
 use App\Models\Sensor;
@@ -11,6 +12,7 @@ use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
 class PageController extends Controller
@@ -89,6 +91,28 @@ class PageController extends Controller
         ];
     }
 
+    private function getGatewayStatusFreshnessSeconds(): int
+    {
+        return max(60, (int) config('app.gateway_device_status_interval_seconds', 300));
+    }
+
+    private function resolveDisplayedActuatorState(
+        array $logicState,
+        ?DeviceStatus $deviceStatus,
+        string $statusField,
+        bool $gatewayOnline
+    ): array {
+        return [
+            'status' => $gatewayOnline && $deviceStatus
+                ? (bool) $deviceStatus->{$statusField}
+                : (bool) ($logicState['status'] ?? false),
+            'mode' => $logicState['mode'] ?? 'threshold',
+            'gateway_online' => $gatewayOnline,
+            'gateway_label' => $gatewayOnline ? 'online' : 'offline',
+            'status_source' => $gatewayOnline ? 'gateway' : 'logic',
+        ];
+    }
+
     private function buildMonitoringActuatorStatus(): array
     {
         $greenhouseIds = $this->getGreenhousesBasic()
@@ -152,24 +176,56 @@ class PageController extends Controller
             }
         }
 
+        $deviceStatusByGh = collect();
+        if (Schema::hasTable('device_statuses')) {
+            $deviceStatusByGh = DeviceStatus::query()
+                ->whereIn('gh_id', $greenhouseIds)
+                ->get()
+                ->keyBy(fn (DeviceStatus $status) => (int) $status->gh_id);
+        }
+        $gatewayFreshAfter = now()->subSeconds($this->getGatewayStatusFreshnessSeconds());
+
         $result = [];
         foreach ($greenhouseIds as $ghId) {
             $temperature = $sensorByGh[$ghId]['Temperature'] ?? null;
             $humidity = $sensorByGh[$ghId]['Humidity'] ?? null;
             $schedule = $scheduleByGh[$ghId] ?? null;
+            $deviceStatus = $deviceStatusByGh->get($ghId);
+            $gatewayOnline = $deviceStatus !== null
+                && $deviceStatus->updated_at !== null
+                && $deviceStatus->updated_at->greaterThanOrEqualTo($gatewayFreshAfter);
+
+            $logicExhaust = $this->resolveActuatorState(
+                $schedule?->relay_exhaust,
+                $humidity
+            );
+            $logicDehumidifier = $this->resolveActuatorState(
+                $schedule?->relay_dehumidifier,
+                $humidity
+            );
+            $logicBlower = $this->resolveActuatorState(
+                $schedule?->relay_blower,
+                $temperature
+            );
 
             $result[$ghId] = [
-                'exhaust' => $this->resolveActuatorState(
-                    $schedule?->relay_exhaust,
-                    $humidity
+                'exhaust' => $this->resolveDisplayedActuatorState(
+                    $logicExhaust,
+                    $deviceStatus,
+                    'exhaust_status',
+                    $gatewayOnline
                 ),
-                'dehumidifier' => $this->resolveActuatorState(
-                    $schedule?->relay_dehumidifier,
-                    $humidity
+                'dehumidifier' => $this->resolveDisplayedActuatorState(
+                    $logicDehumidifier,
+                    $deviceStatus,
+                    'dehumidifier_status',
+                    $gatewayOnline
                 ),
-                'blower' => $this->resolveActuatorState(
-                    $schedule?->relay_blower,
-                    $temperature
+                'blower' => $this->resolveDisplayedActuatorState(
+                    $logicBlower,
+                    $deviceStatus,
+                    'blower_status',
+                    $gatewayOnline
                 ),
             ];
         }

@@ -305,6 +305,7 @@ const activeActuators = computed(() => {
             ...actuator,
             status: Boolean(actuatorData.status),
             mode: actuatorData.mode || "threshold",
+            gatewayOnline: Boolean(actuatorData.gateway_online),
         };
     });
 });
@@ -813,19 +814,35 @@ onBeforeUnmount(() => {
                                     </div>
                                 </div>
 
-                                <div
-                                    :class="
-                                        actuator.status
-                                            ? 'bg-green-100 text-green-700'
-                                            : 'bg-red-100 text-red-700'
-                                    "
-                                    class="px-3 py-1 text-xs font-bold rounded-full"
-                                >
-                                    {{
-                                        actuator.status
-                                            ? t("monitoring.on")
-                                            : t("monitoring.off")
-                                    }}
+                                <div class="flex flex-col items-end gap-1">
+                                    <div
+                                        :class="
+                                            actuator.status
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-red-100 text-red-700'
+                                        "
+                                        class="px-3 py-1 text-xs font-bold rounded-full"
+                                    >
+                                        {{
+                                            actuator.status
+                                                ? t("monitoring.on")
+                                                : t("monitoring.off")
+                                        }}
+                                    </div>
+                                    <p
+                                        :class="
+                                            actuator.gatewayOnline
+                                                ? 'text-green-600'
+                                                : 'text-red-600'
+                                        "
+                                        class="text-[11px] font-semibold uppercase tracking-wide"
+                                    >
+                                        {{
+                                            actuator.gatewayOnline
+                                                ? t('monitoring.online')
+                                                : t('monitoring.offline')
+                                        }}
+                                    </p>
                                 </div>
                             </div>
                         </div>

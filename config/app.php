@@ -76,6 +76,7 @@ return [
     |
     */
     'sensor_min_upload_interval_minutes' => max(0, (int) env('SENSOR_MIN_UPLOAD_INTERVAL_MINUTES', 10)),
+    'gateway_device_status_interval_seconds' => max(60, (int) env('GATEWAY_DEVICE_STATUS_INTERVAL_SECONDS', 300)),
 
     /*
     |--------------------------------------------------------------------------
