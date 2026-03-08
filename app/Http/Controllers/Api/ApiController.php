@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\CameraData;
+use App\Models\DeviceStatus;
 use App\Models\Greenhouse;
 use App\Models\Sensor;
 use App\Models\SensorData;
@@ -367,6 +368,90 @@ class ApiController extends Controller
         return response()->json([
             'success' => true,
             'data' => $result
+        ]);
+    }
+
+    public function postDeviceStatus(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'gh_id' => 'required|exists:greenhouses,id',
+            'exhaust_status' => 'nullable|boolean',
+            'dehumidifier_status' => 'nullable|boolean',
+            'blower_status' => 'nullable|boolean',
+        ]);
+        $validator->after(function ($validator) use ($request) {
+            if (
+                !$request->has('exhaust_status')
+                && !$request->has('dehumidifier_status')
+                && !$request->has('blower_status')
+            ) {
+                $validator->errors()->add('device_status', 'At least one device status field is required.');
+            }
+        });
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $validated = $validator->validate();
+        $deviceStatus = DeviceStatus::firstOrNew(['gh_id' => $validated['gh_id']]);
+
+        foreach (['exhaust_status', 'dehumidifier_status', 'blower_status'] as $field) {
+            if (array_key_exists($field, $validated)) {
+                $deviceStatus->{$field} = (bool) $validated[$field];
+            }
+        }
+
+        $deviceStatus->save();
+        Cache::forget('monitoring_actuator_status');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'gh_id' => (int) $deviceStatus->gh_id,
+                'exhaust_status' => (int) $deviceStatus->exhaust_status,
+                'dehumidifier_status' => (int) $deviceStatus->dehumidifier_status,
+                'blower_status' => (int) $deviceStatus->blower_status,
+            ],
+        ]);
+    }
+
+    public function getDeviceStatus(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'gh_id' => 'required|exists:greenhouses,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $validated = $validator->validate();
+        $deviceStatus = DeviceStatus::firstOrCreate(
+            ['gh_id' => $validated['gh_id']],
+            [
+                'exhaust_status' => false,
+                'dehumidifier_status' => false,
+                'blower_status' => false,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'gh_id' => (int) $deviceStatus->gh_id,
+                'exhaust_status' => (int) $deviceStatus->exhaust_status,
+                'dehumidifier_status' => (int) $deviceStatus->dehumidifier_status,
+                'blower_status' => (int) $deviceStatus->blower_status,
+            ],
         ]);
     }
 

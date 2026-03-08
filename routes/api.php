@@ -26,6 +26,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('thd', [ApiController::class, 'thd']);
     Route::get('camera_status', [ApiController::class, 'camera_status']);
     Route::get('average-sensor-data', [ApiController::class, 'get_average_sensor_data']);
+    Route::post('device_status', [ApiController::class, 'postDeviceStatus']);
+    Route::get('get-device-status', [ApiController::class, 'getDeviceStatus']);
 
     Route::get('/chart-data', [ApiController::class, 'fetchChart']);
     Route::get('/table-per-gh', [ApiController::class, 'tablePerGH']);

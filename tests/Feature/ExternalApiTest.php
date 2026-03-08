@@ -89,11 +89,36 @@ class ExternalApiTest extends TestCase
      */
     public function test_ota_check()
     {
+        Storage::fake('public');
+        $file = UploadedFile::fake()->create('firmware.bin', 256, 'application/octet-stream');
+
+        $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->post('/api/files', [
+            'status' => 1,
+            'version' => '1.2.3',
+            'node_id' => 1,
+            'file' => $file,
+        ])->assertStatus(200);
+
         $response = $this->withHeaders([
             'Authorization' => 'Bearer ' . $this->token,
         ])->getJson('/api/get-file/1');
 
-        $this->assertTrue(in_array($response->status(), [200, 404]));
+        $response->assertStatus(200)
+            ->assertJson([
+                'version' => '1.2.3',
+                'status' => 1,
+                'node_id' => 1,
+            ])
+            ->assertJsonStructure([
+                'version',
+                'file_url',
+                'status',
+                'node_id',
+            ]);
+
+        $this->assertArrayNotHasKey('firmware_url', $response->json());
     }
 
     /**
@@ -119,7 +144,54 @@ class ExternalApiTest extends TestCase
                 'node_id' => 7,
                 'sensor_id' => 7,
                 'version' => '1.2.3',
+            ])
+            ->assertJsonStructure([
+                'file_url',
+                'status',
+                'sensor_id',
+                'node_id',
+                'version',
+                'metadata_persisted',
             ]);
+
+        $this->assertArrayNotHasKey('firmware_url', $response->json());
+    }
+
+    /**
+     * Test OTA check supports node_id query parameter
+     */
+    public function test_ota_check_supports_node_id_query()
+    {
+        Storage::fake('public');
+        $file = UploadedFile::fake()->create('firmware.bin', 256, 'application/octet-stream');
+
+        $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->post('/api/files', [
+            'status' => 1,
+            'version' => '2.0.0',
+            'node_id' => 10,
+            'file' => $file,
+        ])->assertStatus(200);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->getJson('/api/get-file?node_id=10');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'version' => '2.0.0',
+                'status' => 1,
+                'node_id' => 10,
+            ])
+            ->assertJsonStructure([
+                'version',
+                'file_url',
+                'status',
+                'node_id',
+            ]);
+
+        $this->assertArrayNotHasKey('firmware_url', $response->json());
     }
 
     /**
@@ -267,5 +339,44 @@ class ExternalApiTest extends TestCase
                 '*' => ['id', 'aktif', 'mulai', 'selesai', 'relay']
             ]
         ]);
+    }
+
+    /**
+     * Test device status POST and GET endpoints
+     */
+    public function test_device_status_post_and_get()
+    {
+        $postResponse = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->postJson('/api/device_status', [
+            'gh_id' => $this->greenhouse->id,
+            'exhaust_status' => true,
+        ]);
+
+        $postResponse->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'gh_id' => $this->greenhouse->id,
+                    'exhaust_status' => 1,
+                    'dehumidifier_status' => 0,
+                    'blower_status' => 0,
+                ],
+            ]);
+
+        $getResponse = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+        ])->getJson('/api/get-device-status?gh_id=' . $this->greenhouse->id);
+
+        $getResponse->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'gh_id' => $this->greenhouse->id,
+                    'exhaust_status' => 1,
+                    'dehumidifier_status' => 0,
+                    'blower_status' => 0,
+                ],
+            ]);
     }
 }

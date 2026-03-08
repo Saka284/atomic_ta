@@ -14,7 +14,7 @@ class OtaController extends Controller
      * Upload new firmware file
      * 
      * POST /api/files
-     * Form data: status, version, file, sensor_id
+     * Form data: status, version, file, sensor_id/node_id
      * 
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
@@ -91,10 +91,9 @@ class OtaController extends Controller
             \Log::info("[OTA] Firmware uploaded: {$filename}, version: {$validated['version']}");
 
             return response()->json([
-                'firmware_url' => $fileUrl, // alias untuk kompatibilitas response OTA check
                 'file_url' => $fileUrl,
                 'status' => (int) $status,
-                'sensor_id' => $nodeId, // backward compatibility
+                'sensor_id' => $nodeId, // backward compatibility for upload response
                 'node_id' => $nodeId,
                 'version' => $validated['version'],
                 'metadata_persisted' => $metadataPersisted,
@@ -133,7 +132,6 @@ class OtaController extends Controller
         if ($nodeId <= 0) {
             return response()->json([
                 'version' => '',
-                'firmware_url' => '',
                 'file_url' => '',
                 'status' => 0,
                 'node_id' => 0,
@@ -165,7 +163,6 @@ class OtaController extends Controller
         if (!$firmware) {
             return response()->json([
                 'version' => '',
-                'firmware_url' => '',
                 'file_url' => '',
                 'status' => 0, // No update available
                 'node_id' => $nodeId,
@@ -174,8 +171,7 @@ class OtaController extends Controller
 
         return response()->json([
             'version' => $firmware->version,
-            'firmware_url' => $firmware->file_url,
-            'file_url' => $firmware->file_url, // alias for legacy clients
+            'file_url' => $firmware->file_url,
             'status' => 1,
             'node_id' => $nodeId,
         ]);
