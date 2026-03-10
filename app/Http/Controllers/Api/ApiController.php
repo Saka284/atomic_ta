@@ -22,14 +22,14 @@ class ApiController extends Controller
             $gh_id = $dict['gh_id'] ?? $gh_id;
         }
 
-        // 2. Mapping ID Sensor sesuai permintaan USER
-        // GH 1: Temp(1), Hum(2), Light(3), RSSI(7)
-        // GH 2: Temp(4), Hum(5), Light(6), RSSI(8)
-        if ($gh_id == 1) {
-            $ids = ['temp' => 1, 'hum' => 2, 'light' => 3, 'rssi' => 7];
-        } else {
-            $ids = ['temp' => 4, 'hum' => 5, 'light' => 6, 'rssi' => 8];
-        }
+        // 2. Mapping ID Sensor secara dinamis dari database (mencegah error jika ID di server berbeda)
+        $sensors = DB::table('sensors')->where('gh_id', $gh_id)->get();
+        $ids = [
+            'temp' => $sensors->where('name', 'Temperature')->first()->id ?? 0,
+            'hum' => $sensors->where('name', 'Humidity')->first()->id ?? 0,
+            'light' => $sensors->where('name', 'Light Intensity')->first()->id ?? 0,
+            'rssi' => $sensors->where('name', 'RSSI')->first()->id ?? 0,
+        ];
 
         // 3. Query dengan teknik PIVOT agar satu baris memiliki semua nilai sensor
         $query = DB::table('sensor_data')
@@ -306,12 +306,14 @@ class ApiController extends Controller
         $node_id = $request->node_id;
         $recorded_at = $request->recorded_at ?: now();
 
-        // Mapping Sensor ID
-        if ($gh_id == 1) {
-            $mapping = ['temperature' => 1, 'humidity' => 2, 'light_intensity' => 3, 'rssi' => 7];
-        } else {
-            $mapping = ['temperature' => 4, 'humidity' => 5, 'light_intensity' => 6, 'rssi' => 8];
-        }
+        // Mapping Sensor ID secara dinamis (mencegah error jika ID di server berbeda)
+        $sensors = DB::table('sensors')->where('gh_id', $gh_id)->get();
+        $mapping = [
+            'temperature' => $sensors->where('name', 'Temperature')->first()->id ?? 0,
+            'humidity' => $sensors->where('name', 'Humidity')->first()->id ?? 0,
+            'light_intensity' => $sensors->where('name', 'Light Intensity')->first()->id ?? 0,
+            'rssi' => $sensors->where('name', 'RSSI')->first()->id ?? 0,
+        ];
 
         $insertedCount = 0;
         $aliases = [
