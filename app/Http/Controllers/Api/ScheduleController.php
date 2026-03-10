@@ -13,7 +13,7 @@ class ScheduleController extends Controller
 {
     /**
      * Get schedules for gateway.
-     * Endpoint: POST /api/gateway/schedule
+     * Endpoint: GET /api/gateway/schedule?gh_id=1
      */
     public function getSchedule(Request $request)
     {
@@ -47,7 +47,7 @@ class ScheduleController extends Controller
         // Filter by schedule_id if provided
         if ($request->has('schedule_id') && $request->schedule_id !== null) {
             $scheduleIds = is_array($request->schedule_id)
-                ? $request->schedule_id 
+                ? $request->schedule_id
                 : [$request->schedule_id];
             $scheduleIds = array_values(array_map('intval', $scheduleIds));
             sort($scheduleIds);
@@ -58,7 +58,7 @@ class ScheduleController extends Controller
             'gh_id' => (int) $request->gh_id,
             'schedule_id' => $scheduleIds,
         ]));
-        
+
         // Cache for 60 seconds (Gateway polling optimization)
         $response = Cache::remember($cacheKey, 60, function () use ($query, $request) {
             $schedules = $query->orderBy('start_time')

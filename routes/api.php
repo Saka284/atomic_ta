@@ -20,38 +20,32 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('login', [AuthController::class, 'login']);
 
+// Route Public (Read-Only & Hardware Data Upload)
+Route::get('chart-data', [ApiController::class, 'fetchChart']);
+Route::get('table', [ApiController::class, 'tablePerGH']);
+Route::get('table-per-gh', [ApiController::class, 'tablePerGH']); // Alias untuk kompatibilitas frontend
+Route::get('camera-per-gh', [ApiController::class, 'cameraPerGH']);
+Route::get('gauge-data', [ApiController::class, 'get_average_sensor_data']);
+
+// Route untuk Hardware (Tanpa Auth jika diizinkan oleh sistem pengirim)
+Route::post('sensor', [ApiController::class, 'saveSensorData']);
+Route::post('camera', [ApiController::class, 'saveCameraData']);
+Route::get('gateway/schedule', [ScheduleController::class, 'getSchedule']);
+
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('sensor', [ApiController::class, 'sensor']);
-    Route::post('camera', [ApiController::class, 'camera']);
+    // Route untuk Kontrol & Monitoring Web
     Route::get('thd', [ApiController::class, 'thd']);
     Route::get('camera_status', [ApiController::class, 'camera_status']);
-    Route::get('average-sensor-data', [ApiController::class, 'get_average_sensor_data']);
-    Route::post('device_status', [ApiController::class, 'postDeviceStatus']);
     Route::get('get-device-status', [ApiController::class, 'getDeviceStatus']);
+    Route::post('device_status', [ApiController::class, 'postDeviceStatus']);
+    Route::get('get-controlling', [ApiController::class, 'getControlling']);
+    Route::post('update-thresholds', [ApiController::class, 'updateThresholds']);
 
-    Route::get('/chart-data', [ApiController::class, 'fetchChart']);
-    Route::get('/table-per-gh', [ApiController::class, 'tablePerGH']);
-    Route::get('/camera-per-gh', [ApiController::class, 'cameraPerGH']);
-    Route::get('/get-controlling', [ApiController::class, 'getControlling']);
-    Route::post('/update-thresholds', [ApiController::class, 'updateThreshold']);
+    Route::get('schedules', [ScheduleController::class, 'getSchedulesForWeb']);
+    Route::post('schedules', [ScheduleController::class, 'saveSchedules']);
 
-    Route::post('/export-sensor', [ExportController::class, 'sensor']);
-    Route::post('/export-camera', [ExportController::class, 'camera']);
-    
-    // OTA Firmware update check endpoint
-    // Backward compatible:
-    // - /api/get-file/{nodeId}
-    // - /api/get-file?node_id=...
-    Route::get('/get-file/{nodeId?}', [OtaController::class, 'getFirmwareInfo']);
-    
-    // OTA Firmware upload endpoint
-    Route::post('/files', [OtaController::class, 'uploadFirmware']);
-
-    // Schedule API routes for Web
-    Route::get('/schedules', [ScheduleController::class, 'getSchedulesForWeb']);
-    Route::post('/schedules', [ScheduleController::class, 'saveSchedules']);
-
-    // Schedule API route for Gateway (Temporary No Auth)
-    Route::post('/gateway/schedule', [ScheduleController::class, 'getSchedule']);
+    // OTA Firmware update management
+    Route::post('files', [OtaController::class, 'uploadFirmware']);
+    Route::get('get-file/{nodeId?}', [OtaController::class, 'getFirmwareInfo']);
 });
 

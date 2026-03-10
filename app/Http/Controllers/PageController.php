@@ -28,34 +28,34 @@ class PageController extends Controller
 
     private function ensureSensorSnapshotsReady(): void
     {
-        if (Cache::has('sensor_snapshots_ready')) {
+        // Sinkronisasi dilakukan setiap 30 detik agar data tetap segar
+        if (Cache::has('sensor_snapshots_synced')) {
             return;
         }
 
-        $snapshotCount = DB::table('sensor_snapshots')->count();
-        if ($snapshotCount === 0) {
-            DB::statement("
-                INSERT INTO sensor_snapshots (sensor_id, node_id, value, recorded_at, created_at, updated_at)
-                SELECT sd.sensor_id, sd.node_id, sd.value, sd.recorded_at, NOW(), NOW()
-                FROM sensor_data sd
-                INNER JOIN (
-                    SELECT sensor_id, node_id, MAX(id) AS latest_id
-                    FROM sensor_data
-                    GROUP BY sensor_id, node_id
-                ) latest ON latest.latest_id = sd.id
-                ON DUPLICATE KEY UPDATE
-                    value = VALUES(value),
-                    recorded_at = VALUES(recorded_at),
-                    updated_at = VALUES(updated_at)
-            ");
+        DB::statement("
+            INSERT INTO sensor_snapshots (sensor_id, node_id, value, recorded_at, created_at, updated_at)
+            SELECT sd.sensor_id, sd.node_id, sd.value, sd.recorded_at, NOW(), NOW()
+            FROM sensor_data sd
+            INNER JOIN (
+                SELECT sensor_id, node_id, MAX(id) AS latest_id
+                FROM sensor_data
+                GROUP BY sensor_id, node_id
+            ) latest ON latest.latest_id = sd.id
+            ON DUPLICATE KEY UPDATE
+                value = VALUES(value),
+                recorded_at = VALUES(recorded_at),
+                updated_at = VALUES(updated_at)
+        ");
 
-            Cache::forget('gaugeData');
-            Cache::forget('monitoring_latest_time');
-            Cache::forget('heatmap_sensor_data');
-            Cache::forget('heatmap_latest_time');
-        }
+        // Bersihkan cache yang bergantung pada snapshot
+        Cache::forget('gaugeData');
+        Cache::forget('monitoring_latest_time');
+        Cache::forget('heatmap_sensor_data');
+        Cache::forget('heatmap_latest_time');
 
-        Cache::put('sensor_snapshots_ready', true, 600);
+        // Tandai bahwa sinkronisasi sudah dilakukan untuk 30 detik ke depan
+        Cache::put('sensor_snapshots_synced', true, 30);
     }
 
     private function isSensorOutOfThreshold(?array $sensorSnapshot): bool
@@ -181,7 +181,7 @@ class PageController extends Controller
             $deviceStatusByGh = DeviceStatus::query()
                 ->whereIn('gh_id', $greenhouseIds)
                 ->get()
-                ->keyBy(fn (DeviceStatus $status) => (int) $status->gh_id);
+                ->keyBy(fn(DeviceStatus $status) => (int) $status->gh_id);
         }
         $gatewayFreshAfter = now()->subSeconds($this->getGatewayStatusFreshnessSeconds());
 
@@ -263,7 +263,7 @@ class PageController extends Controller
                 });
             }, 'monitoring'),
             'latestData' => Inertia::defer(function () {
-                return Cache::remember('monitoring_latest_time', 10, function () {
+                return Cache::remember('monitoring_latest_time', 5, function () {
                     $rows = DB::select("
                         SELECT 
                             s.gh_id,
@@ -314,7 +314,7 @@ class PageController extends Controller
             'greenhouses' => $greenhouses,
             'activeGhId' => (int) $activeGhId,
             'sensorDataByGh' => Inertia::defer(function () use ($ghIds) {
-                return Cache::remember('heatmap_sensor_data', 60, function () use ($ghIds) {
+                return Cache::remember('heatmap_sensor_data', 10, function () use ($ghIds) {
                     $placeholders = implode(',', array_fill(0, count($ghIds), '?'));
                     $allData = DB::select("
                         SELECT 
@@ -345,23 +345,23 @@ class PageController extends Controller
                         };
 
                         if ($paramKey && isset($result[$row->gh_id])) {
-                            $result[$row->gh_id][$paramKey][] = [
-                                'node_id' => $row->node_id,
-                                'value' => $row->value,
-                            ];
-                        }
-                    }
+                            $nodeId = $row->node_id;
 
-                    foreach ($ghIds as $ghId) {
-                        $baseNodeId = $ghId === 1 ? 1 : 6;
-                        if (empty($result[$ghId]['temperature'])) {
-                            $result[$ghId]['temperature'] = $this->getDummyData($baseNodeId, [20, 25, 30, 35, 40]);
-                        }
-                        if (empty($result[$ghId]['humidity'])) {
-                            $result[$ghId]['humidity'] = $this->getDummyData($baseNodeId, [45, 55, 65, 75, 85]);
-                        }
-                        if (empty($result[$ghId]['lux'])) {
-                            $result[$ghId]['lux'] = $this->getDummyData($baseNodeId, [10000, 20000, 35000, 50000, 65000]);
+                            // MAPPING KHUSUS: Jika Node 10 di GH 1, arahkan ke Node 1 agar muncul di denah
+                            if ($row->gh_id == 1 && $nodeId >= 10) {
+                                $nodeId = 1;
+                            }
+
+                            // Validasi: Pastikan node_id sesuai dengan denah lokasinya (GH1: 1-5, GH2: 6-10)
+                            $isValidNode = ($row->gh_id == 1 && $nodeId >= 1 && $nodeId <= 5) ||
+                                ($row->gh_id == 2 && $nodeId >= 6 && $nodeId <= 10);
+
+                            if ($isValidNode) {
+                                $result[$row->gh_id][$paramKey][] = [
+                                    'node_id' => $nodeId,
+                                    'value' => $row->value,
+                                ];
+                            }
                         }
                     }
 

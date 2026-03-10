@@ -551,14 +551,7 @@ const onRowSelected = (event, gh_id) => {
         if (rowImageLoadingTimers.value[gh_id]) {
             clearTimeout(rowImageLoadingTimers.value[gh_id]);
         }
-
-        rowImageLoadingTimers.value[gh_id] = setTimeout(() => {
-            if (!isComponentAlive.value) {
-                return;
-            }
-
-            rowImageLoading.value[gh_id] = false;
-        }, 500);
+        // Timer dihapus karena sekarang sudah menggunakan event @load yang benar
     }
 };
 
@@ -761,18 +754,17 @@ onUnmounted(() => {
 
                         <div class="flex flex-col gap-4 w-full">
                             <div
-                                class="p-3 border rounded-lg flex justify-center items-center w-full h-[300px]"
+                                class="p-3 border rounded-lg flex justify-center items-center w-full h-[300px] relative"
                             >
                                 <div
                                     v-if="rowImageLoading[greenhouse.id]"
-                                    class="flex justify-center items-center"
+                                    class="absolute inset-0 flex justify-center items-center bg-white z-10"
                                 >
                                     <i
                                         class="fas fa-spinner fa-spin text-gray-400 text-3xl"
                                     ></i>
                                 </div>
                                 <img
-                                    v-else
                                     :src="
                                         rowImageMap[greenhouse.id]
                                             ?.image || '/images/no-image.svg'
