@@ -178,26 +178,122 @@ class ApiController extends Controller
     public function fetchChart(Request $request)
     {
         $sensor_id = $request->sensor_id;
+        $mode = 'avg';
+        $range = 'last_1d';
+        $date_start = null;
+        $date_end = null;
+        $time = null;
+
         if ($request->has('dict')) {
             $dict = json_decode($request->dict, true);
             $sensor_id = $dict['sensor_id'] ?? $sensor_id;
+            $mode = $dict['mode'] ?? $mode;
+            $range = $dict['range'] ?? $range;
+            $date_start = $dict['date_start'] ?? null;
+            $date_end = $dict['date_end'] ?? null;
+            $time = $dict['time'] ?? null;
         }
 
-        if (!$sensor_id)
-            return response()->json(['success' => false], 400);
+        if (!$sensor_id) {
+            return response()->json(['success' => false, 'message' => 'Sensor ID required'], 400);
+        }
 
-        $data = DB::table('sensor_data')
-            ->where('sensor_id', $sensor_id)
-            ->where('recorded_at', '>=', Carbon::now()->subDay())
-            ->select(DB::raw("DATE_FORMAT(recorded_at, '%H:%i') as label"), DB::raw('AVG(value) as value'))
+        $query = DB::table('sensor_data')->where('sensor_id', $sensor_id);
+
+        // Filter based on range
+        if ($range === 'custom') {
+            if ($date_start && $date_end) {
+                $query->whereBetween('recorded_at', [$date_start . ' 00:00:00', $date_end . ' 23:59:59']);
+            } elseif ($date_start) {
+                $query->where('recorded_at', '>=', $date_start . ' 00:00:00');
+            }
+
+            if ($time) {
+                $query->whereRaw("TIME_FORMAT(recorded_at, '%H:00') = ?", [$time]);
+            }
+        } else {
+            $sub = match ($range) {
+                'last_1h' => Carbon::now()->subHour(),
+                'last_1w' => Carbon::now()->subWeek(),
+                'last_1m' => Carbon::now()->subMonth(),
+                default => Carbon::now()->subDay(),
+            };
+            $query->where('recorded_at', '>=', $sub);
+        }
+
+        // Determine bucket type for grouping
+        $diffHours = $range === 'custom' ? 24 : match ($range) {
+            'last_1h' => 1,
+            'last_1w' => 168,
+            'last_1m' => 720,
+            default => 24,
+        };
+
+        if ($diffHours <= 1) {
+            $dateFormat = '%H:%i';
+            $bucketType = 'minute';
+        } elseif ($diffHours <= 48) {
+            $dateFormat = '%H:%i';
+            $bucketType = 'hour';
+        } else {
+            $dateFormat = '%Y-%m-%d';
+            $bucketType = 'day';
+        }
+
+        if ($mode === 'per_node') {
+            $rawData = $query->select(
+                'node_id',
+                DB::raw("DATE_FORMAT(recorded_at, '$dateFormat') as label"),
+                DB::raw('AVG(value) as value'),
+                DB::raw('MIN(recorded_at) as earliest')
+            )
+                ->groupBy('node_id', 'label')
+                ->orderBy('earliest', 'asc')
+                ->get();
+
+            // Extract labels in chronological order from raw data
+            $labels = $rawData->sortBy('earliest')->pluck('label')->unique()->values();
+            $nodes = $rawData->pluck('node_id')->unique();
+            $datasets = [];
+
+            foreach ($nodes as $nodeId) {
+                $nodeData = [];
+                foreach ($labels as $lbl) {
+                    $match = $rawData->where('node_id', $nodeId)->where('label', $lbl)->first();
+                    $nodeData[] = $match ? round($match->value, 2) : null;
+                }
+                $datasets[] = [
+                    'node_id' => $nodeId,
+                    'label' => "Node $nodeId",
+                    'data' => $nodeData
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'mode' => 'per_node',
+                'raw_labels' => $labels,
+                'bucket_type' => $bucketType,
+                'datasets' => $datasets
+            ]);
+        }
+
+        // Mode: Average (default)
+        $data = $query->select(
+            DB::raw("DATE_FORMAT(recorded_at, '$dateFormat') as label"),
+            DB::raw('AVG(value) as value'),
+            DB::raw('MIN(recorded_at) as earliest')
+        )
             ->groupBy('label')
-            ->orderBy('label', 'asc')
+            ->orderBy('earliest', 'asc')
             ->get();
 
         return response()->json([
             'success' => true,
-            'data' => $data->pluck('value'),
-            'label' => $data->pluck('label')
+            'mode' => 'avg',
+            'data' => $data->pluck('value')->map(fn($v) => round($v, 2)),
+            'raw_labels' => $data->pluck('label'),
+            'bucket_type' => $bucketType
         ]);
     }
 
@@ -218,10 +314,23 @@ class ApiController extends Controller
         }
 
         $insertedCount = 0;
-        foreach ($mapping as $key => $sensor_id) {
-            if ($request->has($key)) {
-                $value = $request->input($key);
+        $aliases = [
+            'temperature' => ['temperature', 'temp'],
+            'humidity' => ['humidity', 'hum'],
+            'light_intensity' => ['light_intensity', 'light', 'lux'],
+            'rssi' => ['rssi'],
+        ];
 
+        foreach ($mapping as $key => $sensor_id) {
+            $value = null;
+            foreach ($aliases[$key] as $alias) {
+                if ($request->has($alias)) {
+                    $value = $request->input($alias);
+                    break;
+                }
+            }
+
+            if ($value !== null) {
                 // Insert ke sensor_data
                 DB::table('sensor_data')->insert([
                     'sensor_id' => $sensor_id,

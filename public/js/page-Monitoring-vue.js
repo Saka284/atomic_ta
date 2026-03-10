@@ -1691,7 +1691,39 @@ var CHART_CACHE_LIMIT = 200;
     (0,vue__WEBPACK_IMPORTED_MODULE_0__.watch)(locale, function () {
       relocalizeLoadedCharts();
     });
+    var pollingInterval = null;
+    var startPolling = function startPolling() {
+      stopPolling();
+      pollingInterval = setInterval(function () {
+        // Reload Inertia props for gauges and status
+        _inertiajs_vue3__WEBPACK_IMPORTED_MODULE_1__.router.reload({
+          only: ["gaugeData", "latestData", "actuatorStatus"],
+          preserveScroll: true,
+          preserveState: true,
+          onSuccess: function onSuccess() {
+            // After props update, refetch charts
+            if (activeTab.value) {
+              loadChartsForTab(activeTab.value);
+            }
+          }
+        });
+      }, 30000); // Poll every 30 seconds
+    };
+    var stopPolling = function stopPolling() {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+      }
+    };
+    (0,vue__WEBPACK_IMPORTED_MODULE_0__.onMounted)(function () {
+      populateData();
+      if (activeTab.value) {
+        loadChartsForTab(activeTab.value);
+      }
+      startPolling();
+    });
     (0,vue__WEBPACK_IMPORTED_MODULE_0__.onBeforeUnmount)(function () {
+      stopPolling();
       abortAllChartRequests();
     });
     var __returned__ = {
@@ -1773,15 +1805,27 @@ var CHART_CACHE_LIMIT = 200;
       selectMobileRange: selectMobileRange,
       filterChart: filterChart,
       applyMobileFilter: applyMobileFilter,
+      get pollingInterval() {
+        return pollingInterval;
+      },
+      set pollingInterval(v) {
+        pollingInterval = v;
+      },
+      startPolling: startPolling,
+      stopPolling: stopPolling,
       ref: vue__WEBPACK_IMPORTED_MODULE_0__.ref,
       computed: vue__WEBPACK_IMPORTED_MODULE_0__.computed,
       watch: vue__WEBPACK_IMPORTED_MODULE_0__.watch,
+      onMounted: vue__WEBPACK_IMPORTED_MODULE_0__.onMounted,
       onBeforeUnmount: vue__WEBPACK_IMPORTED_MODULE_0__.onBeforeUnmount,
       get Head() {
         return _inertiajs_vue3__WEBPACK_IMPORTED_MODULE_1__.Head;
       },
       get usePage() {
         return _inertiajs_vue3__WEBPACK_IMPORTED_MODULE_1__.usePage;
+      },
+      get router() {
+        return _inertiajs_vue3__WEBPACK_IMPORTED_MODULE_1__.router;
       },
       BreezeAuthenticatedLayout: _Layouts_Authenticated_vue__WEBPACK_IMPORTED_MODULE_2__["default"],
       Tabs: _Components_Tabs_vue__WEBPACK_IMPORTED_MODULE_3__["default"],

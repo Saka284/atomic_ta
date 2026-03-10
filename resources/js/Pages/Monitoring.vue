@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from "vue";
-import { Head, usePage } from "@inertiajs/vue3";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
+import { Head, usePage, router } from "@inertiajs/vue3";
 import BreezeAuthenticatedLayout from "@/Layouts/Authenticated.vue";
 import Tabs from "@/Components/Tabs.vue";
 import Gauge from "@/Components/Gauge.vue";
@@ -737,7 +737,43 @@ watch(locale, () => {
     relocalizeLoadedCharts();
 });
 
+let pollingInterval = null;
+
+const startPolling = () => {
+    stopPolling();
+    pollingInterval = setInterval(() => {
+        // Reload Inertia props for gauges and status
+        router.reload({
+            only: ["gaugeData", "latestData", "actuatorStatus"],
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                // After props update, refetch charts
+                if (activeTab.value) {
+                    loadChartsForTab(activeTab.value);
+                }
+            },
+        });
+    }, 30000); // Poll every 30 seconds
+};
+
+const stopPolling = () => {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+};
+
+onMounted(() => {
+    populateData();
+    if (activeTab.value) {
+        loadChartsForTab(activeTab.value);
+    }
+    startPolling();
+});
+
 onBeforeUnmount(() => {
+    stopPolling();
     abortAllChartRequests();
 });
 </script>
