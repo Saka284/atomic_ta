@@ -132,7 +132,7 @@ jobs:
 
     - name: Upload Benchmark Artifacts
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: benchmark-results
         path: benchmarks
@@ -140,7 +140,7 @@ jobs:
     # USEFUL ADDITION: Upload logs if tests fail helps debugging
     - name: Upload API Logs
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: laravel-logs
         path: storage/logs
