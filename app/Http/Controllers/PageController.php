@@ -132,12 +132,13 @@ class PageController extends Controller
             FROM sensor_snapshots ss
             JOIN sensors s ON s.id = ss.sensor_id
             WHERE s.name IN ('Temperature', 'Humidity')
+              AND ss.recorded_at >= ?
             GROUP BY
                 s.gh_id,
                 s.name,
                 s.threshold_min,
                 s.threshold_max
-        ");
+        ", [Carbon::today()]);
 
         $sensorByGh = [];
         foreach ($sensorRows as $row) {
@@ -249,6 +250,7 @@ class PageController extends Controller
                             AVG(ss.value) as avg_value
                         FROM sensor_snapshots ss
                         JOIN sensors s ON s.id = ss.sensor_id
+                        WHERE ss.recorded_at >= ?
                         GROUP BY 
                             ss.sensor_id,
                             s.gh_id,
@@ -257,7 +259,7 @@ class PageController extends Controller
                             s.threshold_max,
                             s.unit
                         ORDER BY s.id
-                    ");
+                    ", [Carbon::today()]);
                 });
             }, 'monitoring'),
             'latestData' => Inertia::defer(function () {

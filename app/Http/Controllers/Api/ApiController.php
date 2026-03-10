@@ -144,6 +144,7 @@ class ApiController extends Controller
         $snapshot = DB::table('sensor_snapshots as ss')
             ->join('sensors as s', 's.id', '=', 'ss.sensor_id')
             ->where('s.gh_id', $gh_id)
+            ->where('ss.recorded_at', '>=', Carbon::today())
             ->select('s.name', DB::raw('AVG(ss.value) as avg_value'), DB::raw('MAX(ss.recorded_at) as last_recorded_at'))
             ->groupBy('s.name')
             ->get();
