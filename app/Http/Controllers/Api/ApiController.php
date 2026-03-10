@@ -179,7 +179,7 @@ class ApiController extends Controller
     {
         $sensor_id = $request->sensor_id;
         $mode = 'avg';
-        $range = 'last_1d';
+        $range = 'today';
         $date_start = null;
         $date_end = null;
         $time = null;
@@ -216,6 +216,7 @@ class ApiController extends Controller
                 'last_1h' => Carbon::now()->subHour(),
                 'last_1w' => Carbon::now()->subWeek(),
                 'last_1m' => Carbon::now()->subMonth(),
+                'today' => Carbon::today(), // Mulai dari jam 00:00:00 hari ini
                 default => Carbon::now()->subDay(),
             };
             $query->where('recorded_at', '>=', $sub);
@@ -224,6 +225,7 @@ class ApiController extends Controller
         // Determine bucket type for grouping
         $diffHours = $range === 'custom' ? 24 : match ($range) {
             'last_1h' => 1,
+            'today' => 24,
             'last_1w' => 168,
             'last_1m' => 720,
             default => 24,

@@ -51,7 +51,7 @@ const abortAllChartRequests = () => {
 };
 
 const chartRangeOptions = computed(() => [
-    { value: "custom", label: t("monitoring.range_custom") },
+    { value: "today", label: t("monitoring.range_today") },
     { value: "last_1h", label: t("monitoring.range_1h") },
     { value: "last_1d", label: t("monitoring.range_1d") },
     { value: "last_1w", label: t("monitoring.range_1w") },
@@ -235,7 +235,7 @@ const setChartMode = (sensor_id, mode) => {
 
 const getChartRange = (sensor_id) => {
     if (!chartRange.value[sensor_id]) {
-        chartRange.value[sensor_id] = "custom";
+        chartRange.value[sensor_id] = "today";
     }
     return chartRange.value[sensor_id];
 };
