@@ -234,7 +234,7 @@ class ApiController extends Controller
             $dateFormat = '%H:%i';
             $bucketType = 'minute';
         } elseif ($diffHours <= 48) {
-            $dateFormat = '%H:%i';
+            $dateFormat = '%H:00';
             $bucketType = 'hour';
         } else {
             $dateFormat = '%Y-%m-%d';
