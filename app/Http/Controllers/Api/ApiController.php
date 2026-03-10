@@ -117,8 +117,8 @@ class ApiController extends Controller
     {
         $gh_id = $request->gh_id ?: 1;
 
-        // Sinkronisasi snapshot setiap 30 detik agar data gauge tetap segar
-        if (!Cache::has('sensor_snapshots_synced')) {
+        // Mencegah FULL TABLE SCAN `sensor_data` yang berat jika `sensor_snapshots` sudah ada
+        if (!Cache::remember('sensor_snapshots_initialized', 86400, fn() => DB::table('sensor_snapshots')->exists())) {
             DB::statement("
                 INSERT INTO sensor_snapshots (sensor_id, node_id, value, recorded_at, created_at, updated_at)
                 SELECT sd.sensor_id, sd.node_id, sd.value, sd.recorded_at, NOW(), NOW()
@@ -133,9 +133,8 @@ class ApiController extends Controller
                     recorded_at = VALUES(recorded_at),
                     updated_at = VALUES(updated_at)
             ");
-            Cache::put('sensor_snapshots_synced', true, 30);
+            Cache::put('sensor_snapshots_initialized', true, 86400);
 
-            // Bersihkan cache terkait di PageController agar sinkron
             Cache::forget('gaugeData');
             Cache::forget('monitoring_latest_time');
             Cache::forget('heatmap_sensor_data');

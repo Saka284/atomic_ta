@@ -44,8 +44,6 @@ const descriptionClasses = computed(() =>
     <Link
         :href="href"
         :class="classes"
-        :prefetch="['mount', 'hover', 'click']"
-        :cacheFor="60000"
     >
         <span :class="iconWrapClasses">
             <i v-if="icon" :class="`${icon} text-sm`"></i>

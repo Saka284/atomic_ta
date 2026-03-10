@@ -28,11 +28,16 @@ class PageController extends Controller
 
     private function ensureSensorSnapshotsReady(): void
     {
-        // Sinkronisasi dilakukan setiap 30 detik agar data tetap segar
-        if (Cache::has('sensor_snapshots_synced')) {
+        // Karena `saveSensorData` di ApiController sudah melakukan UPSERT ke table sensor_snapshots secara realtime,
+        // Kita tidak perlu lagi melakukan pemindaian FULL TABLE SCAN ke `sensor_data` setiap 30 detik.
+        // Full scan table `sensor_data` sangat membebani CPU dan memicu lock database ("loading muter-muter").
+
+        // Kita HANYA melakukan inisialisasi awal satu kali jika tabel sensor_snapshots ternyata sepenuhnya kosong.
+        if (Cache::remember('sensor_snapshots_initialized', 86400, fn() => DB::table('sensor_snapshots')->exists())) {
             return;
         }
 
+        // Lakukan inisialisasi hanya jika tabel snapshot kosong (misal baru di-migrate/seeding)
         DB::statement("
             INSERT INTO sensor_snapshots (sensor_id, node_id, value, recorded_at, created_at, updated_at)
             SELECT sd.sensor_id, sd.node_id, sd.value, sd.recorded_at, NOW(), NOW()
@@ -48,14 +53,7 @@ class PageController extends Controller
                 updated_at = VALUES(updated_at)
         ");
 
-        // Bersihkan cache yang bergantung pada snapshot
-        Cache::forget('gaugeData');
-        Cache::forget('monitoring_latest_time');
-        Cache::forget('heatmap_sensor_data');
-        Cache::forget('heatmap_latest_time');
-
-        // Tandai bahwa sinkronisasi sudah dilakukan untuk 30 detik ke depan
-        Cache::put('sensor_snapshots_synced', true, 30);
+        Cache::put('sensor_snapshots_initialized', true, 86400);
     }
 
     private function isSensorOutOfThreshold(?array $sensorSnapshot): bool
@@ -134,13 +132,12 @@ class PageController extends Controller
             FROM sensor_snapshots ss
             JOIN sensors s ON s.id = ss.sensor_id
             WHERE s.name IN ('Temperature', 'Humidity')
-              AND ss.recorded_at >= ?
             GROUP BY
                 s.gh_id,
                 s.name,
                 s.threshold_min,
                 s.threshold_max
-        ", [Carbon::now()->subMinutes(60)]);
+        ");
 
         $sensorByGh = [];
         foreach ($sensorRows as $row) {
@@ -252,7 +249,6 @@ class PageController extends Controller
                             AVG(ss.value) as avg_value
                         FROM sensor_snapshots ss
                         JOIN sensors s ON s.id = ss.sensor_id
-                        WHERE ss.recorded_at >= ?
                         GROUP BY 
                             ss.sensor_id,
                             s.gh_id,
@@ -261,7 +257,7 @@ class PageController extends Controller
                             s.threshold_max,
                             s.unit
                         ORDER BY s.id
-                    ", [Carbon::now()->subMinutes(60)]);
+                    ");
                 });
             }, 'monitoring'),
             'latestData' => Inertia::defer(function () {

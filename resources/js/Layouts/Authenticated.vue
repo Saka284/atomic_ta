@@ -93,18 +93,18 @@ const switchToEnglish = () => {
         <div class="relative flex min-h-screen">
             <aside
                 :class="[
-                    'fixed inset-y-0 left-0 z-[2000] w-72 max-w-[88vw] transform transition-transform duration-300 ease-out',
+                    'fixed inset-y-0 left-0 z-[2000] w-72 max-w-[88vw] transform transition-transform duration-200 ease-in-out',
                     isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
                 ]"
             >
                 <div class="h-full p-3">
-                    <div class="flex h-full flex-col overflow-hidden rounded-2xl border border-emerald-200/70 bg-white/95 shadow-xl shadow-emerald-900/5 backdrop-blur">
+                    <div class="flex h-full flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-lg">
                         <div class="flex items-center justify-between border-b border-emerald-100 px-4 py-4">
                             <Link
                                 :href="route('monitoring')"
                                 class="inline-flex items-center gap-3"
                             >
-                                <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-600/25">
+                                <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-md">
                                     <i class="fas fa-seedling text-lg"></i>
                                 </span>
                                 <span class="leading-tight">
