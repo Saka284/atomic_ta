@@ -1,0 +1,28 @@
+0000000000000000000000000000000000000000 e3a7376607f96025379fca4d1878ca5fe8017c62 atomicwe <atomicwe@jkt09.dewaweb.com> 1740726893 +0700	clone: from https://github.com/OmahIoT/medini.git
+e3a7376607f96025379fca4d1878ca5fe8017c62 8f8c19fb9cf0259f5e4a43248cb80ba40e302330 atomicwe <atomicwe@jkt09.dewaweb.com> 1740732837 +0700	pull: Fast-forward
+8f8c19fb9cf0259f5e4a43248cb80ba40e302330 7e89817751289fc31b2d9723264d686e4d7e51d5 atomicwe <atomicwe@jkt09.dewaweb.com> 1740732854 +0700	checkout: moving from dev to server
+7e89817751289fc31b2d9723264d686e4d7e51d5 f4684c5e6e1290cf00d25e662691554315b8481e atomicwe <atomicwe@jkt09.dewaweb.com> 1741063372 +0700	pull: Fast-forward
+f4684c5e6e1290cf00d25e662691554315b8481e ad9d8a9fc099b0f129a886a72bc5fd308803c47d atomicwe <atomicwe@jkt09.dewaweb.com> 1741229454 +0700	pull: Fast-forward
+ad9d8a9fc099b0f129a886a72bc5fd308803c47d fc372d8e4de267fec27044496ac0d4e3c12c2ba6 atomicwe <atomicwe@jkt09.dewaweb.com> 1741748304 +0700	pull: Fast-forward
+fc372d8e4de267fec27044496ac0d4e3c12c2ba6 114e5af02d61961dd0a3b21a01ea114d3ce13ac1 atomicwe <atomicwe@jkt09.dewaweb.com> 1742613940 +0700	pull: Fast-forward
+114e5af02d61961dd0a3b21a01ea114d3ce13ac1 0de5681ec1d577b4390833d080d9c0289b06caab atomicwe <atomicwe@jkt09.dewaweb.com> 1742634771 +0700	pull: Fast-forward
+0de5681ec1d577b4390833d080d9c0289b06caab 3afee5fed99217cc53236e26e41a2c8c1be6b8c2 atomicwe <atomicwe@jkt09.dewaweb.com> 1742654098 +0700	pull: Fast-forward
+3afee5fed99217cc53236e26e41a2c8c1be6b8c2 321e3cde38a7dc5cf7222b04193a2ec67d431957 atomicwe <atomicwe@jkt09.dewaweb.com> 1742723210 +0700	pull: Fast-forward
+321e3cde38a7dc5cf7222b04193a2ec67d431957 dcd3b6bfc563b19171700b369fa1bfae7613e9f2 atomicwe <atomicwe@jkt09.dewaweb.com> 1742724605 +0700	pull: Fast-forward
+dcd3b6bfc563b19171700b369fa1bfae7613e9f2 16940acd319d8c7f022c48cdfe747494b91998b2 atomicwe <atomicwe@jkt09.dewaweb.com> 1746108799 +0700	pull: Fast-forward
+16940acd319d8c7f022c48cdfe747494b91998b2 b1b5faf4bd97360a8572a81028d350e8cdb49599 atomicwe <atomicwe@jkt09.dewaweb.com> 1746503097 +0700	pull: Fast-forward
+b1b5faf4bd97360a8572a81028d350e8cdb49599 bd7a70b9d1c7127b438f2fd07956198d50e048d4 atomicwe <atomicwe@jkt09.dewaweb.com> 1746506595 +0700	pull: Fast-forward
+bd7a70b9d1c7127b438f2fd07956198d50e048d4 811ec23f5ff89129d06ae474d70bddaf581ec3c3 atomicwe <atomicwe@jkt09.dewaweb.com> 1746519077 +0700	pull: Fast-forward
+811ec23f5ff89129d06ae474d70bddaf581ec3c3 d8eb2bf75c1325cc6c4cc8c073e6e53c77256667 atomicwe <atomicwe@jkt09.dewaweb.com> 1746585925 +0700	pull: Fast-forward
+d8eb2bf75c1325cc6c4cc8c073e6e53c77256667 fdf0571e6ae01aa131399f8b6ed64dab121f701b atomicwe <atomicwe@jkt09.dewaweb.com> 1746588409 +0700	pull: Fast-forward
+fdf0571e6ae01aa131399f8b6ed64dab121f701b 9463d5e56d40be1909a16064f4324f5e763ea3dc atomicwe <atomicwe@jkt09.dewaweb.com> 1746605357 +0700	pull: Fast-forward
+9463d5e56d40be1909a16064f4324f5e763ea3dc d43cccf821eb856368fe7dcb3cfdc828d73ef3ca atomicwe <atomicwe@jkt09.dewaweb.com> 1746619360 +0700	pull: Fast-forward
+d43cccf821eb856368fe7dcb3cfdc828d73ef3ca 6d201767069c3b68d10fd8aea381ed12c3856984 atomicwe <atomicwe@jkt09.dewaweb.com> 1746706122 +0700	pull: Fast-forward
+6d201767069c3b68d10fd8aea381ed12c3856984 c255e0377b79b1f0cb7a0ff16708d77a61d9e689 atomicwe <atomicwe@jkt09.dewaweb.com> 1746779028 +0700	pull: Fast-forward
+c255e0377b79b1f0cb7a0ff16708d77a61d9e689 0fa7dfb95e1d57d8f9cc9cad2eb44da18f46aed6 atomicwe <atomicwe@jkt09.dewaweb.com> 1746918064 +0700	pull: Fast-forward
+0fa7dfb95e1d57d8f9cc9cad2eb44da18f46aed6 4eda32f7cbac25c0e34823c977da8cc12f46ca41 atomicwe <atomicwe@jkt09.dewaweb.com> 1747806369 +0700	pull: Fast-forward
+4eda32f7cbac25c0e34823c977da8cc12f46ca41 70fc367d975621d0443c1ecb6df05d047252768c atomicwe <atomicwe@jkt09.dewaweb.com> 1747815797 +0700	pull: Fast-forward
+70fc367d975621d0443c1ecb6df05d047252768c bfd1149a0ac1ff830883871e76b6ce9d70c78629 atomicwe <atomicwe@jkt09.dewaweb.com> 1747880103 +0700	pull: Fast-forward
+bfd1149a0ac1ff830883871e76b6ce9d70c78629 5c108e14c6cdb1eef25423566f2dbc41f39ce6a8 atomicwe <atomicwe@jkt09.dewaweb.com> 1747884744 +0700	pull: Fast-forward
+5c108e14c6cdb1eef25423566f2dbc41f39ce6a8 26666d47dbdd0eac3f7966e68860be46a68d1792 atomicwe <atomicwe@jkt09.dewaweb.com> 1747889613 +0700	pull: Fast-forward
+26666d47dbdd0eac3f7966e68860be46a68d1792 8f8c19fb9cf0259f5e4a43248cb80ba40e302330 DhimasArdinata <dhimasardinatapp@gmail.com> 1756257615 +0700	checkout: moving from server to dev

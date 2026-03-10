@@ -1,0 +1,171 @@
+name: atomic-web-ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  laravel-test:
+    name: Laravel API Tests (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php-version: ['8.2']
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: atomic_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php-version }}
+        extensions: mbstring, dom, fileinfo, mysql
+        # coverage: xdebug # Optional: Enable if you want coverage reports
+
+    - name: Copy .env
+      run: |
+        cp .env.example .env
+        sed -i 's/^APP_ENV=.*/APP_ENV=testing/' .env
+        sed -i 's/^DB_CONNECTION=.*/DB_CONNECTION=mysql/' .env
+        sed -i 's/^DB_HOST=.*/DB_HOST=127.0.0.1/' .env
+        sed -i 's/^DB_PORT=.*/DB_PORT=3306/' .env
+        sed -i 's/^DB_DATABASE=.*/DB_DATABASE=atomic_test/' .env
+        sed -i 's/^DB_USERNAME=.*/DB_USERNAME=root/' .env
+        sed -i 's/^DB_PASSWORD=.*/DB_PASSWORD=root/' .env
+
+    - name: Get Composer Cache Directory
+      id: composer-cache
+      run: |
+        echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v4
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-composer-
+
+    - name: Install Dependencies
+      run: composer install --prefer-dist --no-progress --no-suggest
+
+    # USEFUL ADDITION: Check for security vulnerabilities in dependencies
+    - name: Security Audit
+      run: composer audit
+      continue-on-error: true # Don't break build, just warn
+
+    - name: Generate Key
+      run: php artisan key:generate
+
+    - name: Run Migrations
+      run: php artisan migrate --env=testing --force
+
+    - name: Execute Tests
+      run: php artisan test --env=testing
+
+    - name: Seed Benchmark Data
+      run: |
+        php artisan migrate --env=testing --force
+        php artisan db:seed --class=BenchmarkSeeder --env=testing --force
+
+    - name: Resolve Benchmark Base Ref
+      id: bench_base
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          BASE_REF="${{ github.event.pull_request.base.sha }}"
+        elif [ "${{ github.event_name }}" = "push" ] && [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+          BASE_REF="${{ github.event.before }}"
+        else
+          BASE_REF="origin/main"
+        fi
+
+        git fetch --no-tags --prune --depth=100 origin "$BASE_REF" || true
+        if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
+          git fetch --no-tags --prune --depth=100 origin main
+          BASE_REF="origin/main"
+        fi
+
+        echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
+
+    - name: Prepare Baseline (auto from base ref)
+      env:
+        BENCH_USE_ISOLATED_SQLITE: "1"
+      run: |
+        php scripts/bench_prepare_baseline.php --ref="${{ steps.bench_base.outputs.base_ref }}" --output=benchmarks/baseline.json --force
+
+    - name: Run Benchmarks
+      run: php artisan bench:endpoints --env=testing --output=benchmarks/current.json
+
+    - name: Compare Benchmarks
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          php scripts/bench_compare.php \
+            --current=benchmarks/current.json \
+            --baseline=benchmarks/baseline.json \
+            --output=benchmarks/compare.json \
+            --regression=0.25 \
+            --min-regression-ms=50 \
+            --fail-on-regression
+        else
+          php scripts/bench_compare.php \
+            --current=benchmarks/current.json \
+            --baseline=benchmarks/baseline.json \
+            --output=benchmarks/compare.json \
+            --regression=0.25 \
+            --min-regression-ms=50
+        fi
+
+    - name: Upload Benchmark Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmarks
+
+    # USEFUL ADDITION: Upload logs if tests fail helps debugging
+    - name: Upload API Logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: laravel-logs
+        path: storage/logs
+
+
+  frontend-build:
+    name: Frontend Build (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Build Project
+      run: npm run prod || npm run build
