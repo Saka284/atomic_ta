@@ -175,15 +175,20 @@ class ApiController extends Controller
     public function cameraPerGH(Request $request)
     {
         $gh_id = $request->gh_id ?: 1;
+        $perPage = 5;
+        $page = 1;
+
         if ($request->has('dict')) {
             $dict = json_decode($request->dict, true);
             $gh_id = $dict['gh_id'] ?? $gh_id;
+            $perPage = $dict['per_page'] ?? $perPage;
+            $page = $dict['page'] ?? $page;
         }
 
         $paginated = DB::table('camera_data')
             ->where('gh_id', $gh_id)
             ->orderBy('recorded_at', 'desc')
-            ->paginate(5);
+            ->paginate($perPage, ['*'], 'page', $page);
 
         // Mapping URL Gambar (Sesuaikan port jika aplikasi utama bukan di 8000)
         $domain = "http://127.0.0.1:8000";

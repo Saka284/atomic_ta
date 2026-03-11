@@ -109,10 +109,10 @@ const formatCameraDateTime = (rawValue) => {
             hour = 0;
         }
 
-        return `${day}/${month}/${year} ${String(hour).padStart(
+        return `${day}/${month}/${String(year).slice(-2)} ${String(hour).padStart(
             2,
             "0"
-        )}:${minute}:${second}`;
+        )}:${minute}`;
     }
 
     const isoLikeValue = value.includes("T") ? value : value.replace(" ", "T");
@@ -123,35 +123,36 @@ const formatCameraDateTime = (rawValue) => {
 
     const day = String(parsedDate.getDate()).padStart(2, "0");
     const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
-    const year = parsedDate.getFullYear();
+    const year = String(parsedDate.getFullYear()).slice(-2);
     const hour = String(parsedDate.getHours()).padStart(2, "0");
     const minute = String(parsedDate.getMinutes()).padStart(2, "0");
-    const second = String(parsedDate.getSeconds()).padStart(2, "0");
-    return `${day}/${month}/${year} ${hour}:${minute}:${second}`;
+    return `${day}/${month}/${year} ${hour}:${minute}`;
 };
 
 const columnDefs = computed(() => [
     {
-        headerName: t("camera.date_time"),
+        headerName: "Waktu",
         field: "recorded_at",
         sortable: true,
-        resizable: false,
+        resizable: true,
         suppressMovable: true,
-        headerClass: "camera-header-center",
-        cellClass: "camera-cell-center",
+        headerClass: "camera-header-center !text-xs sm:!text-sm",
+        cellClass: "camera-cell-center !text-[11px] sm:!text-sm !px-1",
         cellStyle: { textAlign: "center" },
         valueFormatter: (params) => formatCameraDateTime(params.value),
-        flex: 1,
+        flex: 1.2,
+        minWidth: 80,
     },
     {
-        headerName: "Akurasi Deteksi",
+        headerName: "Akurasi",
         field: "confidence",
         sortable: true,
-        resizable: false,
+        resizable: true,
         suppressMovable: true,
-        headerClass: "camera-header-center",
+        headerClass: "camera-header-center !text-xs sm:!text-sm",
         flex: 1,
-        cellClass: "camera-cell-center",
+        minWidth: 60,
+        cellClass: "camera-cell-center !text-[11px] sm:!text-sm !px-1",
         cellStyle: { textAlign: "center" },
         cellRenderer: (params) => {
             return params.value !== null && params.value !== undefined
@@ -160,21 +161,22 @@ const columnDefs = computed(() => [
         },
     },
     {
-        headerName: t("camera.status"),
+        headerName: "Status",
         field: "status",
         sortable: true,
-        resizable: false,
+        resizable: true,
         suppressMovable: true,
-        headerClass: "camera-header-center",
+        headerClass: "camera-header-center !text-xs sm:!text-sm",
         flex: 1,
-        cellClass: "camera-cell-center",
+        minWidth: 70,
+        cellClass: "camera-cell-center !px-1",
         cellStyle: { textAlign: "center" },
         cellRenderer: (params) => {
             const status = params.value || "Unknown";
             const statusLabelMap = {
-                Berkabut: t("camera.status_foggy"),
-                "Tidak Berkabut": t("camera.status_clear"),
-                Unknown: t("camera.status_unknown"),
+                Berkabut: "Kabut",
+                "Tidak Berkabut": "Cerah",
+                Unknown: "-",
             };
 
             const statusClasses = {
@@ -194,7 +196,7 @@ const columnDefs = computed(() => [
             wrapper.style.height = "100%";
 
             const div = document.createElement("div");
-            div.className = `my-auto px-3 py-2 rounded-full text-xs font-semibold ${badgeClass}`;
+            div.className = `px-2 py-[3px] rounded text-[10px] sm:text-[11px] font-medium leading-none tracking-wide ${badgeClass}`;
             div.textContent = statusLabelMap[status] || status;
             div.style.display = "inline-block";
 
@@ -806,7 +808,7 @@ onUnmounted(() => {
                                         </div>
                                     </div>
                                     <ag-grid-vue
-                                        class="camera-grid"
+                                        class="camera-grid w-full"
                                         :rowData="
                                             rowDataMap[greenhouse.id] || []
                                         "
@@ -860,6 +862,15 @@ onUnmounted(() => {
 <style scoped>
 :deep(.camera-grid .camera-header-center .ag-header-cell-label) {
     justify-content: center;
+}
+
+:deep(.camera-grid .ag-header-cell::after),
+:deep(.camera-grid .ag-header-cell-resize::after) {
+    display: none !important;
+}
+
+:deep(.camera-grid .ag-header-cell) {
+    border-right: none !important;
 }
 
 :deep(.camera-grid .camera-cell-center) {
