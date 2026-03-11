@@ -265,6 +265,23 @@ const getChartRangeLabel = (sensor_id) => {
     );
 };
 
+const getActiveDateText = (sensor_id) => {
+    const range = getChartRange(sensor_id);
+    if (range === "custom") {
+        const dt = getDateTime(sensor_id);
+        const formattedDate = formatDateRangeDisplay(dt.date);
+        if (dt.time && (!Array.isArray(dt.date) || !dt.date[1])) {
+            return `${formattedDate} ${dt.time}`.trim();
+        }
+        return formattedDate || t("monitoring.range_custom");
+    }
+    const label = getChartRangeLabel(sensor_id);
+    if (range === "today") {
+        return `${label} (${formatCompactDate(new Date())})`;
+    }
+    return label;
+};
+
 const setCustomRangeFromDatePicker = (sensor_id) => {
     if (getChartRange(sensor_id) !== "custom") {
         chartRange.value[sensor_id] = "custom";
@@ -1314,6 +1331,7 @@ onBeforeUnmount(() => {
                                     data[activeTab]?.chart?.[sensor.sensor_id]
                                         ?.chartDatasets || []
                                 "
+                                :subtitle="getActiveDateText(sensor.sensor_id)"
                             />
                             <p
                                 v-else-if="isFetching[sensor.sensor_id]"

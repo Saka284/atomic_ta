@@ -45,6 +45,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    subtitle: {
+        type: String,
+        default: "",
+    },
 });
 
 const canvasRef = ref(null);
@@ -190,6 +194,12 @@ const getChartOptions = () => ({
         },
     },
     scales: {
+        x: {
+            title: {
+                display: Boolean(props.subtitle),
+                text: props.subtitle,
+            },
+        },
         y: {
             beginAtZero: false,
             ticks: {
@@ -346,6 +356,7 @@ const buildWatchSignature = () => {
         normalizeWatchValue(props.sensor_name),
         normalizeWatchValue(props.chartColor?.background),
         normalizeWatchValue(props.chartColor?.border),
+        normalizeWatchValue(props.subtitle),
         labelSignature,
         dataSignature,
         datasetSignature,

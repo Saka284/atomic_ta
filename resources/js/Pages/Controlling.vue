@@ -176,7 +176,23 @@ const activeSensors = computed(() => {
     const activeGreenhouse = Array.isArray(data.value)
         ? data.value.find((gh) => gh.id == activeTab.value)
         : null;
-    return activeGreenhouse ? activeGreenhouse?.sensor : [];
+    
+    if (!activeGreenhouse || !Array.isArray(activeGreenhouse?.sensor)) {
+        return [];
+    }
+    
+    const uniqueSensors = [];
+    const seenNames = new Set();
+    
+    for (const sensor of activeGreenhouse.sensor) {
+        const normalizedName = String(sensor.name).trim().toLowerCase();
+        if (!seenNames.has(normalizedName)) {
+            uniqueSensors.push(sensor);
+            seenNames.add(normalizedName);
+        }
+    }
+    
+    return uniqueSensors;
 });
 
 const isThresholdChanged = computed(() => {

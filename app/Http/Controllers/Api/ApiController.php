@@ -15,14 +15,29 @@ class ApiController extends Controller
      */
     public function tablePerGH(Request $request)
     {
-        // 1. Ambil Greenhouse ID
+        // 1. Ambil Parameter Default
         $gh_id = $request->gh_id ?: 1;
+        $page = 1;
+        $perPage = 10;
+        $sortField = 'recorded_at';
+        $sortDirection = 'desc';
+        $startDate = null;
+        $endDate = null;
+        $nodeId = null;
+
         if ($request->has('dict')) {
             $dict = json_decode($request->dict, true);
             $gh_id = $dict['gh_id'] ?? $gh_id;
+            $page = $dict['page'] ?? $page;
+            $perPage = $dict['per_page'] ?? $perPage;
+            $sortField = $dict['sort_field'] ?? $sortField;
+            $sortDirection = $dict['sort_direction'] ?? $sortDirection;
+            $startDate = $dict['start_date'] ?? null;
+            $endDate = $dict['end_date'] ?? null;
+            $nodeId = $dict['node_id'] ?? null;
         }
 
-        // 2. Mapping ID Sensor secara dinamis dari database (mencegah error jika ID di server berbeda)
+        // 2. Mapping ID Sensor
         $sensors = DB::table('sensors')->where('gh_id', $gh_id)->get();
         $ids = [
             'temp' => $sensors->where('name', 'Temperature')->first()->id ?? 0,
@@ -31,9 +46,82 @@ class ApiController extends Controller
             'rssi' => $sensors->where('name', 'RSSI')->first()->id ?? 0,
         ];
 
-        // 3. Query dengan teknik PIVOT agar satu baris memiliki semua nilai sensor
-        $query = DB::table('sensor_data')
+        // 3. Optimasi: Ambil node_id & recorded_at yang terpaginasi terlebih dahulu.
+        $baseQuery = DB::table('sensor_data')
+            ->select('node_id', 'recorded_at')
             ->whereIn('sensor_id', array_values($ids))
+            ->groupBy('node_id', 'recorded_at');
+
+        if ($nodeId) {
+            $baseQuery->where('node_id', $nodeId);
+        }
+
+        if ($startDate && $endDate) {
+            $baseQuery->whereBetween('recorded_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+
+        // Handle Base Query Sorting
+        if ($sortField === 'node_id' || $sortField === 'recorded_at' || $sortField === 'date' || $sortField === 'time') {
+            $field = in_array($sortField, ['date', 'time']) ? 'recorded_at' : $sortField;
+            $baseQuery->orderBy($field, strtolower($sortDirection) === 'asc' ? 'asc' : 'desc');
+        } else {
+            // Jika sort by aggregate value, maka tetap urutkan default terlebih dahulu
+            $baseQuery->orderBy('recorded_at', 'desc');
+        }
+
+        // Lakukan perhitungan Total secara super cepat via Cache & satu id sensor saja (Temperature)
+        $cacheKey = "count_table_gh_{$gh_id}_" . md5(json_encode([$ids['temp'], $nodeId, $startDate, $endDate]));
+        $totalRows = Cache::remember($cacheKey, 300, function () use ($ids, $nodeId, $startDate, $endDate) {
+            $q = DB::table('sensor_data')->where('sensor_id', $ids['temp']);
+            if ($nodeId) {
+                $q->where('node_id', $nodeId);
+            }
+            if ($startDate && $endDate) {
+                $q->whereBetween('recorded_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+            }
+            return $q->count();
+        });
+
+        // Ambil ID hanya di halaman ini (LIMIT OFFSET via Index)
+        $baseItems = clone $baseQuery;
+        $paginatedBaseItems = $baseItems->offset(($page - 1) * $perPage)->limit($perPage)->get();
+
+        $paginatedBase = new \Illuminate\Pagination\LengthAwarePaginator(
+            $paginatedBaseItems,
+            $totalRows,
+            $perPage,
+            $page
+        );
+
+        // Jika tidak ada data, kembalikan kosong
+        if ($paginatedBase->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'total' => $paginatedBase->total(),
+                'current_page' => $paginatedBase->currentPage(),
+                'per_page' => $perPage,
+                'last_page' => $paginatedBase->lastPage(),
+            ]);
+        }
+
+        // 4. Kumpulkan hasil node_id dan recorded_at yang masuk di page ini
+        $nodesAndDates = [];
+        foreach ($paginatedBase->items() as $item) {
+            $nodesAndDates[] = ['node_id' => $item->node_id, 'recorded_at' => $item->recorded_at];
+        }
+
+        // 5. Query nilai aggregate hanya untuk row yang ada di halaman ini
+        $aggregatedQuery = DB::table('sensor_data')
+            ->whereIn('sensor_id', array_values($ids))
+            ->where(function ($q) use ($nodesAndDates) {
+                foreach ($nodesAndDates as $group) {
+                    $q->orWhere(function ($subq) use ($group) {
+                        $subq->where('node_id', $group['node_id'])
+                            ->where('recorded_at', $group['recorded_at']);
+                    });
+                }
+            })
             ->select(
                 'node_id',
                 'recorded_at',
@@ -44,20 +132,40 @@ class ApiController extends Controller
                 DB::raw("MAX(CASE WHEN sensor_id = {$ids['light']} THEN value END) as light_intensity"),
                 DB::raw("MAX(CASE WHEN sensor_id = {$ids['rssi']} THEN value END) as rssi")
             )
-            ->groupBy('node_id', 'recorded_at')
-            ->orderBy('recorded_at', 'desc');
+            ->groupBy('node_id', 'recorded_at');
 
-        // 4. Pagination agar footer tabel muncul (count total)
-        $perPage = 10;
-        $paginatedData = $query->paginate($perPage);
+        $aggregatedData = $aggregatedQuery->get();
+
+        // Gabungkan/urutkan hasilnya kembali sesuai order paginasi
+        $finalData = [];
+        foreach ($nodesAndDates as $nd) {
+            $match = $aggregatedData->first(fn($a) => $a->node_id === $nd['node_id'] && $a->recorded_at === $nd['recorded_at']);
+            if ($match) {
+                $finalData[] = $match;
+            }
+        }
+
+        // Pengecualian jika sort fieldnya aggregate (sebaiknya pagination dilakukan via frontend jika sorting aggregate kompleks diperlukan,
+        // namun disini kita sort memory pada current paginated items)
+        if (in_array($sortField, ['temperature', 'humidity', 'light_intensity', 'rssi'])) {
+            usort($finalData, function ($a, $b) use ($sortField, $sortDirection) {
+                $valA = $a->{$sortField} ?? 0;
+                $valB = $b->{$sortField} ?? 0;
+                if ($valA == $valB)
+                    return 0;
+                if (strtolower($sortDirection) === 'asc')
+                    return $valA < $valB ? -1 : 1;
+                return $valA > $valB ? -1 : 1;
+            });
+        }
 
         return response()->json([
             'success' => true,
-            'data' => $paginatedData->items(),
-            'total' => $paginatedData->total(),
-            'current_page' => $paginatedData->currentPage(),
+            'data' => $finalData,
+            'total' => $paginatedBase->total(),
+            'current_page' => $paginatedBase->currentPage(),
             'per_page' => $perPage,
-            'last_page' => $paginatedData->lastPage(),
+            'last_page' => $paginatedBase->lastPage(),
         ]);
     }
 
