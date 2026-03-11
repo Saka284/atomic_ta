@@ -1,1 +1,227 @@
-(self.webpackChunk=self.webpackChunk||[]).push([[847],{307(e,o,t){"use strict";var r,n=t(9726),u=t(5554),s=t(5246),i=(t(902),t(4627));t(8290),"undefined"!=typeof globalThis&&(globalThis.__VUE_OPTIONS_API__=!0,globalThis.__VUE_PROD_DEVTOOLS__=!1,globalThis.__VUE_PROD_HYDRATION_MISMATCH_DETAILS__=!1);var a=(null===(r=window.document.getElementsByTagName("title")[0])||void 0===r?void 0:r.innerText)||"Laravel";u.$W.set({"prefetch.cacheFor":6e4,"prefetch.hoverDelay":50}),(0,u.sj)({title:function(e){return"".concat(e," - ").concat(a)},resolve:function(e){return t(7871)("./".concat(e,".vue"))},progress:{color:"#4B5563",showSpinner:!0},setup:function(e){var o=e.el,t=e.App,r=e.props,u=e.plugin;(0,n.Ef)({render:function(){return(0,n.h)(t,r)}}).use(u).use(s.Ay).use(i.Z$,window.Ziggy).mount(o)}})},8290(e,o,t){window._=t(2543),window.axios=t(6425),window.axios.defaults.headers.common["X-Requested-With"]="XMLHttpRequest"},1016(){},7871(e,o,t){var r={"./Auth/ConfirmPassword.vue":[9476,[634]],"./Auth/ForgotPassword.vue":[3668,[771]],"./Auth/Login.vue":[9860,[442]],"./Auth/Register.vue":[8853,[366]],"./Auth/ResetPassword.vue":[6267,[39]],"./Auth/VerifyEmail.vue":[8938,[668]],"./Camera.vue":[833,[660,385]],"./Controlling.vue":[6470,[660,869]],"./Heatmap.vue":[4174,[660,34]],"./Monitoring.vue":[9105,[660,454]],"./Table.vue":[4979,[660,526]]};function n(e){if(!t.o(r,e))return Promise.resolve().then(()=>{var o=new Error("Cannot find module '"+e+"'");throw o.code="MODULE_NOT_FOUND",o});var o=r[e],n=o[0];return Promise.all(o[1].map(t.e)).then(()=>t(n))}n.keys=()=>Object.keys(r),n.id=7871,e.exports=n},2634(){}},e=>{var o=o=>e(e.s=o);e.O(0,[252,660],()=>(o(307),o(1016)));e.O()}]);
+(self["webpackChunk"] = self["webpackChunk"] || []).push([["/js/app"],{
+
+/***/ "./resources/js/app.js"
+/*!*****************************!*\
+  !*** ./resources/js/app.js ***!
+  \*****************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var vue__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! vue */ "./node_modules/vue/dist/vue.esm-bundler.js");
+/* harmony import */ var _inertiajs_vue3__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @inertiajs/vue3 */ "./node_modules/@inertiajs/vue3/dist/index.esm.js");
+/* harmony import */ var vue_toastification__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! vue-toastification */ "./node_modules/vue-toastification/dist/index.mjs");
+/* harmony import */ var vue_toastification_dist_index_css__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! vue-toastification/dist/index.css */ "./node_modules/vue-toastification/dist/index.css");
+/* harmony import */ var ziggy_js__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ziggy-js */ "./node_modules/ziggy-js/dist/index.js");
+var _window$document$getE;
+__webpack_require__(/*! ./bootstrap */ "./resources/js/bootstrap.js");
+
+
+
+
+
+if (typeof globalThis !== "undefined") {
+  globalThis.__VUE_OPTIONS_API__ = true;
+  globalThis.__VUE_PROD_DEVTOOLS__ = false;
+  globalThis.__VUE_PROD_HYDRATION_MISMATCH_DETAILS__ = false;
+}
+var appName = ((_window$document$getE = window.document.getElementsByTagName("title")[0]) === null || _window$document$getE === void 0 ? void 0 : _window$document$getE.innerText) || "Laravel";
+_inertiajs_vue3__WEBPACK_IMPORTED_MODULE_1__.config.set({
+  "prefetch.cacheFor": 60000,
+  "prefetch.hoverDelay": 50
+});
+(0,_inertiajs_vue3__WEBPACK_IMPORTED_MODULE_1__.createInertiaApp)({
+  title: function title(_title) {
+    return "".concat(_title, " - ").concat(appName);
+  },
+  resolve: function resolve(name) {
+    return __webpack_require__("./resources/js/Pages lazy recursive ^\\.\\/.*\\.vue$")("./".concat(name, ".vue"));
+  },
+  progress: {
+    color: '#4B5563',
+    showSpinner: true
+  },
+  setup: function setup(_ref) {
+    var el = _ref.el,
+      App = _ref.App,
+      props = _ref.props,
+      plugin = _ref.plugin;
+    (0,vue__WEBPACK_IMPORTED_MODULE_0__.createApp)({
+      render: function render() {
+        return (0,vue__WEBPACK_IMPORTED_MODULE_0__.h)(App, props);
+      }
+    }).use(plugin).use(vue_toastification__WEBPACK_IMPORTED_MODULE_2__["default"]).use(ziggy_js__WEBPACK_IMPORTED_MODULE_4__.ZiggyVue, window.Ziggy).mount(el);
+  }
+});
+
+/***/ },
+
+/***/ "./resources/js/bootstrap.js"
+/*!***********************************!*\
+  !*** ./resources/js/bootstrap.js ***!
+  \***********************************/
+(__unused_webpack_module, __unused_webpack_exports, __webpack_require__) {
+
+window._ = __webpack_require__(/*! lodash */ "./node_modules/lodash/lodash.js");
+
+/**
+ * We'll load the axios HTTP library which allows us to easily issue requests
+ * to our Laravel back-end. This library automatically handles sending the
+ * CSRF token as a header based on the value of the "XSRF" token cookie.
+ */
+
+window.axios = __webpack_require__(/*! axios */ "./node_modules/axios/dist/browser/axios.cjs");
+window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
+
+/**
+ * Echo exposes an expressive API for subscribing to channels and listening
+ * for events that are broadcast by Laravel. Echo and event broadcasting
+ * allows your team to easily build robust real-time web applications.
+ */
+
+// import Echo from 'laravel-echo';
+
+// window.Pusher = require('pusher-js');
+
+// window.Echo = new Echo({
+//     broadcaster: 'pusher',
+//     key: process.env.MIX_PUSHER_APP_KEY,
+//     cluster: process.env.MIX_PUSHER_APP_CLUSTER,
+//     forceTLS: true
+// });
+
+/***/ },
+
+/***/ "./resources/css/app.css"
+/*!*******************************!*\
+  !*** ./resources/css/app.css ***!
+  \*******************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+// extracted by mini-css-extract-plugin
+
+
+/***/ },
+
+/***/ "./resources/js/Pages lazy recursive ^\\.\\/.*\\.vue$"
+/*!*******************************************************************************************!*\
+  !*** ./resources/js/Pages/ lazy ^\.\/.*\.vue$ chunkName: page-[request] namespace object ***!
+  \*******************************************************************************************/
+(module, __unused_webpack_exports, __webpack_require__) {
+
+var map = {
+	"./Auth/ConfirmPassword.vue": [
+		"./resources/js/Pages/Auth/ConfirmPassword.vue",
+		[
+			"/js/vendor",
+			"page-Auth-ConfirmPassword-vue"
+		]
+	],
+	"./Auth/ForgotPassword.vue": [
+		"./resources/js/Pages/Auth/ForgotPassword.vue",
+		[
+			"/js/vendor",
+			"page-Auth-ForgotPassword-vue"
+		]
+	],
+	"./Auth/Login.vue": [
+		"./resources/js/Pages/Auth/Login.vue",
+		[
+			"/js/vendor",
+			"page-Auth-Login-vue"
+		]
+	],
+	"./Auth/Register.vue": [
+		"./resources/js/Pages/Auth/Register.vue",
+		[
+			"/js/vendor",
+			"page-Auth-Register-vue"
+		]
+	],
+	"./Auth/ResetPassword.vue": [
+		"./resources/js/Pages/Auth/ResetPassword.vue",
+		[
+			"/js/vendor",
+			"page-Auth-ResetPassword-vue"
+		]
+	],
+	"./Auth/VerifyEmail.vue": [
+		"./resources/js/Pages/Auth/VerifyEmail.vue",
+		[
+			"/js/vendor",
+			"page-Auth-VerifyEmail-vue"
+		]
+	],
+	"./Camera.vue": [
+		"./resources/js/Pages/Camera.vue",
+		[
+			"/js/vendor",
+			"page-Camera-vue"
+		]
+	],
+	"./Controlling.vue": [
+		"./resources/js/Pages/Controlling.vue",
+		[
+			"/js/vendor",
+			"page-Controlling-vue"
+		]
+	],
+	"./Heatmap.vue": [
+		"./resources/js/Pages/Heatmap.vue",
+		[
+			"/js/vendor",
+			"page-Heatmap-vue"
+		]
+	],
+	"./Monitoring.vue": [
+		"./resources/js/Pages/Monitoring.vue",
+		[
+			"/js/vendor",
+			"page-Monitoring-vue"
+		]
+	],
+	"./Table.vue": [
+		"./resources/js/Pages/Table.vue",
+		[
+			"/js/vendor",
+			"page-Table-vue"
+		]
+	]
+};
+function webpackAsyncContext(req) {
+	if(!__webpack_require__.o(map, req)) {
+		return Promise.resolve().then(() => {
+	var e = new Error("Cannot find module '" + req + "'");
+	e.code = 'MODULE_NOT_FOUND';
+	throw e;
+});
+	}
+
+	var ids = map[req], id = ids[0];
+	return Promise.all(ids[1].map(__webpack_require__.e)).then(() => (__webpack_require__(id)));
+}
+webpackAsyncContext.keys = () => (Object.keys(map));
+webpackAsyncContext.id = "./resources/js/Pages lazy recursive ^\\.\\/.*\\.vue$";
+module.exports = webpackAsyncContext;
+
+/***/ },
+
+/***/ "?2128"
+/*!********************************!*\
+  !*** ./util.inspect (ignored) ***!
+  \********************************/
+() {
+
+/* (ignored) */
+
+/***/ }
+
+},
+/******/ __webpack_require__ => { // webpackRuntimeModules
+/******/ var __webpack_exec__ = (moduleId) => (__webpack_require__(__webpack_require__.s = moduleId))
+/******/ __webpack_require__.O(0, ["css/app","/js/vendor"], () => (__webpack_exec__("./resources/js/app.js"), __webpack_exec__("./resources/css/app.css")));
+/******/ var __webpack_exports__ = __webpack_require__.O();
+/******/ }
+]);

@@ -237,7 +237,7 @@ class PageController extends Controller
         $this->ensureSensorSnapshotsReady();
 
         return Inertia::render('Monitoring', [
-            'gaugeData' => Inertia::defer(function () {
+            'gaugeData' => function () {
                 return Cache::remember('gaugeData', 5, function () {
                     return DB::select("
                         SELECT 
@@ -261,8 +261,8 @@ class PageController extends Controller
                         ORDER BY s.id
                     ", [Carbon::today()]);
                 });
-            }, 'monitoring'),
-            'latestData' => Inertia::defer(function () {
+            },
+            'latestData' => function () {
                 return Cache::remember('monitoring_latest_time', 5, function () {
                     $rows = DB::select("
                         SELECT 
@@ -280,12 +280,12 @@ class PageController extends Controller
 
                     return $rows;
                 });
-            }, 'monitoring'),
-            'actuatorStatus' => Inertia::defer(function () {
+            },
+            'actuatorStatus' => function () {
                 return Cache::remember('monitoring_actuator_status', 10, function () {
                     return $this->buildMonitoringActuatorStatus();
                 });
-            }, 'monitoring'),
+            },
         ]);
     }
 
@@ -313,7 +313,7 @@ class PageController extends Controller
         return Inertia::render('Heatmap', [
             'greenhouses' => $greenhouses,
             'activeGhId' => (int) $activeGhId,
-            'sensorDataByGh' => Inertia::defer(function () use ($ghIds) {
+            'sensorDataByGh' => function () use ($ghIds) {
                 return Cache::remember('heatmap_sensor_data', 10, function () use ($ghIds) {
                     $placeholders = implode(',', array_fill(0, count($ghIds), '?'));
                     $allData = DB::select("
@@ -367,8 +367,8 @@ class PageController extends Controller
 
                     return $result;
                 });
-            }, 'heatmap'),
-            'thresholdsByGh' => Inertia::defer(function () use ($ghIds) {
+            },
+            'thresholdsByGh' => function () use ($ghIds) {
                 return Cache::remember('heatmap_thresholds', 300, function () use ($ghIds) {
                     $result = [];
 
@@ -401,8 +401,8 @@ class PageController extends Controller
 
                     return $result;
                 });
-            }, 'heatmap'),
-            'latestData' => Inertia::defer(function () {
+            },
+            'latestData' => function () {
                 return Cache::remember('heatmap_latest_time', 30, function () {
                     $rows = DB::select("
                         SELECT 
@@ -419,7 +419,7 @@ class PageController extends Controller
 
                     return $rows;
                 });
-            }, 'heatmap'),
+            },
         ]);
     }
 
@@ -489,18 +489,18 @@ class PageController extends Controller
         $formattedTime = $latestDataTime ? Carbon::parse($latestDataTime)->format('d/m/Y H:i:s') : null;
         return Inertia::render('Camera', [
             'latestData' => $formattedTime,
-            'actuatorStatus' => Inertia::defer(function () {
+            'actuatorStatus' => function () {
                 return Cache::remember('monitoring_actuator_status', 10, function () {
                     return $this->buildMonitoringActuatorStatus();
                 });
-            }, 'monitoring'),
+            },
         ]);
     }
 
     public function controlling()
     {
         return Inertia::render('Controlling', [
-            'initialData' => Inertia::defer(function () {
+            'initialData' => function () {
                 return Cache::remember('controlling_data', 60, function () {
                     return Greenhouse::query()
                         ->select(['id', 'name'])
@@ -512,8 +512,8 @@ class PageController extends Controller
                         ])
                         ->get();
                 });
-            }, 'controlling'),
-            'initialSchedules' => Inertia::defer(function () {
+            },
+            'initialSchedules' => function () {
                 return Cache::remember('controlling_schedules', 60, function () {
                     $schedules = [];
                     $allSchedules = Schedule::query()
@@ -548,7 +548,7 @@ class PageController extends Controller
 
                     return $schedules;
                 });
-            }, 'controlling'),
+            },
         ]);
     }
 }

@@ -68,7 +68,7 @@ const toggleSidebar = () => {
 };
 
 const handleNavClick = () => {
-    if (typeof window !== "undefined" && window.innerWidth < 640) {
+    if (typeof window !== "undefined") {
         closeSidebar();
     }
 };
