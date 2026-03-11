@@ -432,6 +432,14 @@ const fetchData = async (gh_id, { force = false } = {}) => {
 
             rowDataMap.value[parsedGhId] = jsonData.data;
             rowImageMap.value[parsedGhId] = nextPreview;
+            
+            // Preload images background (optimalisasi performa klik baris)
+            jsonData.data.forEach((item) => {
+                if (item && item.image) {
+                    const img = new Image();
+                    img.src = item.image;
+                }
+            });
             const meta = ensurePaginationMeta(parsedGhId);
             meta.total = Number(jsonData.total || 0);
             meta.lastPage = Number(jsonData.last_page || 1);
