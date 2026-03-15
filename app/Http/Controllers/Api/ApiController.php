@@ -291,7 +291,7 @@ class ApiController extends Controller
     }
 
     /**
-     * Ambil data untuk Chart (Grafik)
+     * Ambil data untuk Chart (Grafik)s
      */
     public function fetchChart(Request $request)
     {
