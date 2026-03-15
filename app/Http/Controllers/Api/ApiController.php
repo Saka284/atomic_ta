@@ -190,8 +190,8 @@ class ApiController extends Controller
             ->orderBy('recorded_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        // Mapping URL Gambar (Sesuaikan port jika aplikasi utama bukan di 8000)
-        $domain = "http://127.0.0.1:8000";
+        // Mapping URL Gambar (Dinamis sesuai host yang mengakses)
+        $domain = rtrim(url('/'), '/');
 
         $items = collect($paginated->items())->map(function ($item) use ($domain) {
             // FIX STATUS: Frontend butuh kolom "status" (Teks), bukan "isFoggy" (Boolean)
@@ -199,15 +199,20 @@ class ApiController extends Controller
 
             // FIX IMAGE: Gabungkan Domain dengan Path dari DB
             if (!empty($item->image) && !str_starts_with($item->image, 'http')) {
-                // Bersihkan path jika ada 'public/' atau dobel '/storage/'
                 $itemPath = $item->image;
+
+                // Bersihkan 'public/' jika ada
                 $itemPath = str_replace('public/', '', $itemPath);
 
-                // Jika path di DB sudah diawali '/storage', jangan tambahkan '/storage' lagi
-                if (str_starts_with($itemPath, '/storage')) {
+                // Pastikan diawali satu slash agar konsisten
+                $itemPath = '/' . ltrim($itemPath, '/');
+
+                // Jika sudah diawali '/storage/', gunakan apa adanya
+                if (str_starts_with($itemPath, '/storage/')) {
                     $item->image = $domain . $itemPath;
                 } else {
-                    $item->image = $domain . '/storage/' . ltrim($itemPath, '/');
+                    // Jika belum, tambahkan '/storage/'
+                    $item->image = $domain . '/storage' . $itemPath;
                 }
             }
 
@@ -489,6 +494,7 @@ class ApiController extends Controller
     {
         $gh_id = $request->gh_id;
         $isFoggy = $request->isFoggy;
+        $confidence = $request->confidence;
         $recorded_at = $request->recorded_at ?: now();
         $image_base64 = $request->image;
 
@@ -523,6 +529,7 @@ class ApiController extends Controller
             'gh_id' => $gh_id,
             'image' => $dbPath,
             'isFoggy' => $isFoggy,
+            'confidence' => $confidence,
             'recorded_at' => $recorded_at,
             'created_at' => now(),
             'updated_at' => now(),
