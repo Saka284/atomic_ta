@@ -17,6 +17,8 @@ class ExportController extends Controller
     // --- EXPORT SENSOR (JANGAN DIUBAH) ---
     public function sensor(Request $request)
     {
+        ini_set('memory_limit', '512M');
+        set_time_limit(0);
         $request->validate([
             'gh_id' => 'required|integer',
             'start_date' => 'required|date',
@@ -42,6 +44,8 @@ class ExportController extends Controller
     // --- EXPORT CAMERA (INI YANG KITA UBAH JADI ZIP) ---
     public function camera(Request $request)
     {
+        ini_set('memory_limit', '512M');
+        set_time_limit(0);
         // 1. Validasi Input
         $request->validate([
             'start_date' => 'required|date',
@@ -70,7 +74,7 @@ class ExportController extends Controller
         // 3. Siapkan File ZIP
         $zipFileName = 'Laporan_Camera_' . date('Y-m-d_His') . '.zip';
         $zipPath = public_path($zipFileName); // Simpan sementara di folder public
-        
+
         // Hapus file lama jika ada (biar bersih)
         if (File::exists($zipPath)) {
             File::delete($zipPath);
@@ -87,7 +91,7 @@ class ExportController extends Controller
                 // Logika status (Cek apakah foggy atau tidak)
                 $statusText = $row->isFoggy ? 'Berkabut' : 'Tidak Berkabut';
                 $imagePath = parse_url((string) $row->image, PHP_URL_PATH) ?: (string) $row->image;
-                
+
                 // Siapkan baris data
                 $csvRow = [
                     $row->gh_id,
@@ -98,7 +102,7 @@ class ExportController extends Controller
                 ];
                 $csvContent .= implode(',', $csvRow) . "\n";
             }
-            
+
             // Masukkan data teks tadi ke dalam ZIP
             $zip->addFromString('Data_Laporan.csv', $csvContent);
 

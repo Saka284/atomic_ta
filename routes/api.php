@@ -27,6 +27,9 @@ Route::get('table-per-gh', [ApiController::class, 'tablePerGH']); // Alias untuk
 Route::get('camera-per-gh', [ApiController::class, 'cameraPerGH']);
 Route::get('gauge-data', [ApiController::class, 'get_average_sensor_data']);
 
+Route::post('export-sensor', [ExportController::class, 'sensor']);
+Route::post('export-camera', [ExportController::class, 'camera']);
+
 // Route untuk Hardware (Tanpa Auth jika diizinkan oleh sistem pengirim)
 Route::post('sensor', [ApiController::class, 'saveSensorData']);
 Route::post('camera', [ApiController::class, 'saveCameraData']);
