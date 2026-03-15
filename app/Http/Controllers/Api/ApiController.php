@@ -199,6 +199,8 @@ class ApiController extends Controller
 
             // FIX IMAGE: Gabungkan Domain dengan Path dari DB
             if (!empty($item->image) && !str_starts_with($item->image, 'http')) {
+                // Media Base URL untuk akses gambar (bisa diarahkan ke https://ta.atomic.web.id)
+                $mediaBase = rtrim(config('app.media_url', url('/')), '/');
                 $itemPath = $item->image;
 
                 // Bersihkan 'public/' jika ada
@@ -209,10 +211,10 @@ class ApiController extends Controller
 
                 // Jika sudah diawali '/storage/', gunakan apa adanya
                 if (str_starts_with($itemPath, '/storage/')) {
-                    $item->image = $domain . $itemPath;
+                    $item->image = $mediaBase . $itemPath;
                 } else {
                     // Jika belum, tambahkan '/storage/'
-                    $item->image = $domain . '/storage' . $itemPath;
+                    $item->image = $mediaBase . '/storage' . $itemPath;
                 }
             }
 
@@ -291,7 +293,7 @@ class ApiController extends Controller
     }
 
     /**
-     * Ambil data untuk Chart (Grafik)s
+     * Ambil data untuk Chart (Grafik)
      */
     public function fetchChart(Request $request)
     {
