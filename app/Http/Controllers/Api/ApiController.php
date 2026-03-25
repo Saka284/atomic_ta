@@ -538,14 +538,18 @@ class ApiController extends Controller
         ]);
 
         if ($isFoggy == 1 || $isFoggy === true || strtolower(trim((string) $isFoggy)) === 'true') {
+            \Illuminate\Support\Facades\Log::info("Triggering FCM for GH {$gh_id}. isFoggy=" . json_encode($isFoggy));
             try {
                 \DevKandil\NotiFire\Facades\Fcm::withTitle('Peringatan Kabut')
                     ->withBody('Terdeteksi kabut pada kamera di Greenhouse ' . $gh_id . '!')
                     ->withPriority(\DevKandil\NotiFire\Enums\MessagePriority::HIGH)
                     ->sendToTopics('peringatan_kabut');
+                \Illuminate\Support\Facades\Log::info("FCM sent successfully for GH {$gh_id}");
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('FCM Error: ' . $e->getMessage());
+                \Illuminate\Support\Facades\Log::error('FCM Error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             }
+        } else {
+            \Illuminate\Support\Facades\Log::info("FCM NOT triggered for GH {$gh_id}. isFoggy=" . json_encode($isFoggy));
         }
 
         return response()->json(['success' => true]);
