@@ -239,20 +239,24 @@ class ApiController extends Controller
 
         // Mencegah FULL TABLE SCAN `sensor_data` yang berat jika `sensor_snapshots` sudah ada
         if (!Cache::remember('sensor_snapshots_initialized', 86400, fn() => DB::table('sensor_snapshots')->exists())) {
-            DB::statement("
-                INSERT INTO sensor_snapshots (sensor_id, node_id, value, recorded_at, created_at, updated_at)
-                SELECT sd.sensor_id, sd.node_id, sd.value, sd.recorded_at, NOW(), NOW()
-                FROM sensor_data sd
-                INNER JOIN (
-                    SELECT sensor_id, node_id, MAX(id) AS latest_id
-                    FROM sensor_data
-                    GROUP BY sensor_id, node_id
-                ) latest ON latest.latest_id = sd.id
-                ON DUPLICATE KEY UPDATE
-                    value = VALUES(value),
-                    recorded_at = VALUES(recorded_at),
-                    updated_at = VALUES(updated_at)
-            ");
+            try {
+                DB::statement("
+                    INSERT INTO sensor_snapshots (sensor_id, node_id, value, recorded_at, created_at, updated_at)
+                    SELECT sd.sensor_id, sd.node_id, sd.value, sd.recorded_at, NOW(), NOW()
+                    FROM sensor_data sd
+                    INNER JOIN (
+                        SELECT sensor_id, node_id, MAX(id) AS latest_id
+                        FROM sensor_data
+                        GROUP BY sensor_id, node_id
+                    ) latest ON latest.latest_id = sd.id
+                    ON DUPLICATE KEY UPDATE
+                        value = VALUES(value),
+                        recorded_at = VALUES(recorded_at),
+                        updated_at = VALUES(updated_at)
+                ");
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error("Snapshot Error: " . $e->getMessage());
+            }
             Cache::put('sensor_snapshots_initialized', true, 86400);
 
             Cache::forget('gaugeData');
@@ -424,6 +428,11 @@ class ApiController extends Controller
      */
     public function saveSensorData(Request $request)
     {
+        $request->validate([
+            'gh_id' => 'required|integer',
+            'node_id' => 'required|integer',
+        ]);
+
         $gh_id = $request->gh_id;
         $node_id = $request->node_id;
         $recorded_at = $request->recorded_at ?: now();
@@ -537,7 +546,9 @@ class ApiController extends Controller
             'updated_at' => now(),
         ]);
 
-        if ($isFoggy == 1 || $isFoggy === true || strtolower(trim((string) $isFoggy)) === 'true') {
+        $isFoggyNormalized = filter_var($isFoggy, FILTER_VALIDATE_BOOLEAN);
+
+        if ($isFoggyNormalized) {
             \Illuminate\Support\Facades\Log::info("Triggering FCM for GH {$gh_id}. isFoggy=" . json_encode($isFoggy));
             try {
                 \DevKandil\NotiFire\Facades\Fcm::withTitle('Peringatan Kabut')
