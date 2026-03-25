@@ -6,6 +6,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "devkandil/notifire": "^1.2",
         "doctrine/dbal": "^3.10",
         "firebase/php-jwt": "^7.0",
         "guzzlehttp/guzzle": "^7.10",
@@ -69,7 +70,8 @@
         "preferred-install": "dist",
         "sort-packages": true,
         "allow-plugins": {
-            "pestphp/pest-plugin": true
+            "pestphp/pest-plugin": true,
+            "php-http/discovery": true
         }
     },
     "minimum-stability": "dev",

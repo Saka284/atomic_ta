@@ -537,6 +537,17 @@ class ApiController extends Controller
             'updated_at' => now(),
         ]);
 
+        if ($isFoggy == 1 || $isFoggy === true || strtolower(trim((string) $isFoggy)) === 'true') {
+            try {
+                \DevKandil\NotiFire\Facades\Fcm::withTitle('Peringatan Kabut')
+                    ->withBody('Terdeteksi kabut pada kamera di Greenhouse ' . $gh_id . '!')
+                    ->withPriority(\DevKandil\NotiFire\Enums\MessagePriority::HIGH)
+                    ->sendToTopics('peringatan_kabut');
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('FCM Error: ' . $e->getMessage());
+            }
+        }
+
         return response()->json(['success' => true]);
     }
 
