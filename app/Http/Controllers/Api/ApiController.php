@@ -552,7 +552,7 @@ class ApiController extends Controller
             \Illuminate\Support\Facades\Log::info("Triggering FCM for GH {$gh_id}. isFoggy=" . json_encode($isFoggy));
             try {
                 \DevKandil\NotiFire\Facades\Fcm::withTitle('Peringatan Kabut')
-                    ->withBody('Terdeteksi kabut pada kamera di Greenhouse ' . $gh_id . '!')
+                    ->withBody('Terdeteksi kabut pada kamera!')
                     ->withPriority(\DevKandil\NotiFire\Enums\MessagePriority::HIGH)
                     ->sendToTopics('peringatan_kabut');
                 \Illuminate\Support\Facades\Log::info("FCM sent successfully for GH {$gh_id}");
