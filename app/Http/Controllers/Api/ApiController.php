@@ -551,10 +551,16 @@ class ApiController extends Controller
         if ($isFoggyNormalized) {
             \Illuminate\Support\Facades\Log::info("Triggering FCM for GH {$gh_id}. isFoggy=" . json_encode($isFoggy));
             try {
-                \DevKandil\NotiFire\Facades\Fcm::withTitle('Peringatan Kabut')
-                    ->withBody('Terdeteksi kabut pada kamera!')
-                    ->withPriority(\DevKandil\NotiFire\Enums\MessagePriority::HIGH)
-                    ->sendToTopics('peringatan_kabut');
+                $messaging = app('firebase.messaging');
+                $message = \Kreait\Firebase\Messaging\CloudMessage::fromArray([
+                    'topic' => 'peringatan_kabut',
+                    'notification' => [
+                        'title' => 'Peringatan Kabut',
+                        'body' => 'Terdeteksi kabut pada kamera!',
+                    ],
+                ]);
+
+                $messaging->send($message);
                 \Illuminate\Support\Facades\Log::info("FCM sent successfully for GH {$gh_id}");
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\Log::error('FCM Error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
