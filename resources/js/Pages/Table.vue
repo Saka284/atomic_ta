@@ -38,6 +38,7 @@ const CACHE_LIMIT = 40;
 const gridApi = ref(null);
 let activeAbortController = null;
 let latestRequestId = 0;
+let autoRefreshInterval = null;
 
 const columnDefs = computed(() => [
     {
@@ -173,7 +174,7 @@ const setCachedPayload = (cacheKey, payload) => {
     });
 };
 
-const fetchData = async ({ force = false } = {}) => {
+const fetchData = async ({ force = false, silent = false } = {}) => {
     const requestId = ++latestRequestId;
 
     if (activeAbortController) {
@@ -196,7 +197,9 @@ const fetchData = async ({ force = false } = {}) => {
     activeAbortController = new AbortController();
 
     try {
-        isLoading.value = true;
+        if (!silent) {
+            isLoading.value = true;
+        }
 
         const url = `/api/table-per-gh?dict=${encodeURIComponent(
             JSON.stringify(queryData),
@@ -303,12 +306,28 @@ watch([daterange, selectedNode], () => {
     debouncedFetchData();
 });
 
+const startAutoRefresh = () => {
+    stopAutoRefresh();
+    autoRefreshInterval = setInterval(() => {
+        fetchData({ force: true, silent: true });
+    }, 30000);
+};
+
+const stopAutoRefresh = () => {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+    }
+};
+
 // Initial fetch
 onMounted(() => {
     fetchData();
+    startAutoRefresh();
 });
 
 onBeforeUnmount(() => {
+    stopAutoRefresh();
     debouncedFetchData.cancel();
     debouncedColumnFilterFetch.cancel();
     if (activeAbortController) {

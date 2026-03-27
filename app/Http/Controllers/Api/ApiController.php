@@ -493,6 +493,7 @@ class ApiController extends Controller
             Cache::forget('monitoring_latest_time');
             Cache::forget('heatmap_sensor_data');
             Cache::forget('heatmap_latest_time');
+            Cache::forget('heatmap_thresholds');
         }
 
         return response()->json(['success' => true, 'inserted' => $insertedCount]);
