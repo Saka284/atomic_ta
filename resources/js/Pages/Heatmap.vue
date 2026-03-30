@@ -254,26 +254,36 @@ function normalizeValue(value) {
 }
 
 // ===============================
-// FUNGSI PENENTUAN STATUS (LINEAR)
+// FUNGSI PENENTUAN STATUS (BIDIRECTIONAL)
 // ===============================
 /**
- * Menentukan status dan warna marker berdasarkan nilai linear yang dipetakan
+ * Menentukan status dan warna marker
+ * - WARNA: linear min→max (biru→merah), konsisten dengan heatmap dan legend
+ * - STATUS TEXT: bidirectional (deviasi dari tengah = Aman/Normal/Waspada/Kritis)
  */
 function getStatus(value) {
   const val = parseFloat(value);
-  const normalized = normalizeValue(val);
-  const colorObj = interpolateColor(normalized);
+  const thresholds = currentThresholds.value;
+  const range = thresholds.max - thresholds.min;
+  
+  if (range === 0) {
+    return { text: t("heatmap.normal"), color: 'rgb(37, 99, 235)' };
+  }
+  
+  // WARNA: linear mapping (sama dengan heatmap)
+  const colorObj = interpolateColor(normalizeValue(val));
   const color = `rgb(${colorObj.r}, ${colorObj.g}, ${colorObj.b})`;
   
-  // Tentukan text status berdasarkan posisi linear
-  let text = "-";
-  if (normalized <= 0.3) {
-    text = t("heatmap.low") || "Min"; 
-  } else if (normalized <= 0.7) {
-    text = t("heatmap.normal") || "Normal";
-  } else {
-    text = t("heatmap.high") || "Max";
-  }
+  // STATUS TEXT: bidirectional (deviasi dari titik tengah)
+  const center = (thresholds.min + thresholds.max) / 2;
+  const halfRange = range / 2;
+  const deviation = Math.abs(val - center) / halfRange;
+  
+  let text;
+  if (deviation <= 0.3) text = t("heatmap.safe");         // Dekat tengah = Aman
+  else if (deviation <= 0.6) text = t("heatmap.normal");   // Agak jauh = Normal
+  else if (deviation <= 1.0) text = t("heatmap.warning");  // Mendekati boundary = Waspada
+  else text = t("heatmap.critical");                        // Di luar range = Kritis
   
   return { text, color };
 }
