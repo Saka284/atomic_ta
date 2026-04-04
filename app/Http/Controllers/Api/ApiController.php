@@ -47,26 +47,44 @@ class ApiController extends Controller
         ];
 
         // 3. Optimasi: Ambil node_id & recorded_at yang terpaginasi terlebih dahulu.
-        $baseQuery = DB::table('sensor_data')
-            ->select('node_id', 'recorded_at')
-            ->whereIn('sensor_id', array_values($ids))
-            ->groupBy('node_id', 'recorded_at');
+        $baseQuery = DB::table('sensor_data as sd')
+            ->select('sd.node_id', 'sd.recorded_at')
+            ->whereIn('sd.sensor_id', array_values($ids))
+            ->groupBy('sd.node_id', 'sd.recorded_at');
 
         if ($nodeId) {
-            $baseQuery->where('node_id', $nodeId);
+            $baseQuery->where('sd.node_id', $nodeId);
         }
 
         if ($startDate && $endDate) {
-            $baseQuery->whereBetween('recorded_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+            $baseQuery->whereBetween('sd.recorded_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
         }
 
         // Handle Base Query Sorting
-        if ($sortField === 'node_id' || $sortField === 'recorded_at' || $sortField === 'date' || $sortField === 'time') {
-            $field = in_array($sortField, ['date', 'time']) ? 'recorded_at' : $sortField;
+        $aggregateFields = [
+            'temperature' => 'temp',
+            'humidity' => 'hum',
+            'light_intensity' => 'light',
+            'rssi' => 'rssi'
+        ];
+
+        if (array_key_exists($sortField, $aggregateFields)) {
+            $sensorKey = $aggregateFields[$sortField];
+            $sensorIdToSort = $ids[$sensorKey];
+            
+            $baseQuery->leftJoin('sensor_data as sd_sort', function($join) use ($sensorIdToSort) {
+                $join->on('sd.node_id', '=', 'sd_sort.node_id')
+                     ->on('sd.recorded_at', '=', 'sd_sort.recorded_at')
+                     ->where('sd_sort.sensor_id', '=', $sensorIdToSort);
+            });
+            
+            $direction = strtolower($sortDirection) === 'asc' ? 'asc' : 'desc';
+            $baseQuery->orderBy(DB::raw("MAX(sd_sort.value)"), $direction);
+        } elseif ($sortField === 'node_id' || $sortField === 'recorded_at' || $sortField === 'date' || $sortField === 'time') {
+            $field = in_array($sortField, ['date', 'time']) ? 'sd.recorded_at' : "sd.$sortField";
             $baseQuery->orderBy($field, strtolower($sortDirection) === 'asc' ? 'asc' : 'desc');
         } else {
-            // Jika sort by aggregate value, maka tetap urutkan default terlebih dahulu
-            $baseQuery->orderBy('recorded_at', 'desc');
+            $baseQuery->orderBy('sd.recorded_at', 'desc');
         }
 
         // Lakukan perhitungan Total secara super cepat via Cache & satu id sensor saja (Temperature)
@@ -125,7 +143,7 @@ class ApiController extends Controller
             ->select(
                 'node_id',
                 'recorded_at',
-                DB::raw("DATE(recorded_at) as date"),
+                DB::raw("DATE_FORMAT(recorded_at, '%d-%m-%Y') as date"),
                 DB::raw("TIME(recorded_at) as time"),
                 DB::raw("MAX(CASE WHEN sensor_id = {$ids['temp']} THEN value END) as temperature"),
                 DB::raw("MAX(CASE WHEN sensor_id = {$ids['hum']} THEN value END) as humidity"),
@@ -145,19 +163,7 @@ class ApiController extends Controller
             }
         }
 
-        // Pengecualian jika sort fieldnya aggregate (sebaiknya pagination dilakukan via frontend jika sorting aggregate kompleks diperlukan,
-        // namun disini kita sort memory pada current paginated items)
-        if (in_array($sortField, ['temperature', 'humidity', 'light_intensity', 'rssi'])) {
-            usort($finalData, function ($a, $b) use ($sortField, $sortDirection) {
-                $valA = $a->{$sortField} ?? 0;
-                $valB = $b->{$sortField} ?? 0;
-                if ($valA == $valB)
-                    return 0;
-                if (strtolower($sortDirection) === 'asc')
-                    return $valA < $valB ? -1 : 1;
-                return $valA > $valB ? -1 : 1;
-            });
-        }
+        // Data telah disortir secara global di level database, tidak perlu lokal sorting.
 
         return response()->json([
             'success' => true,

@@ -367,7 +367,8 @@ const getGaugeScale = (sensorName) => {
     const scales = {
         Temperature: { min: 0, max: 40 },
         Humidity: { min: 0, max: 100 },
-        "Light Intensity": { min: 0, max: 65535 },
+        "Light Intensity": { min: 0, max: 30000 },
+        RSSI: { min: -100, max: 0 },
     };
     return scales[sensorName] || { min: 0, max: 100 };
 };
@@ -1323,6 +1324,7 @@ onBeforeUnmount(() => {
                                 "
                                 :id="sensor.sensor_id"
                                 :sensor_name="getSensorLabel(sensor.name)"
+                                :symbol="sensor.unit === '%' ? '%RH' : sensor.unit"
                                 :chartColor="
                                     data[activeTab]?.chart?.[sensor.sensor_id]
                                         .chartColor
@@ -1360,7 +1362,7 @@ onBeforeUnmount(() => {
                                     ] !== undefined
                                 "
                                 :title="getSensorLabel(sensor.name)"
-                                :symbol="sensor.unit"
+                                :symbol="sensor.unit === '%' ? '%RH' : sensor.unit"
                                 :value="
                                     data[activeTab]?.gauge?.[sensor.sensor_id]
                                 "

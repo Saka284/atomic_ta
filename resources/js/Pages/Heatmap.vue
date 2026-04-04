@@ -145,7 +145,7 @@ const currentGreenhouseImage = computed(() => currentGHConfig.value.image);
 // ===============================
 const parameterConfig = {
   temperature: { min: 0, max: 40, unit: '°C', labelKey: 'sensor.temperature' },
-  humidity: { min: 0, max: 100, unit: '%', labelKey: 'sensor.humidity' },
+  humidity: { min: 0, max: 100, unit: '%RH', labelKey: 'sensor.humidity' },
   lux: { min: 0, max: 65535, unit: 'lux', labelKey: 'sensor.light_intensity' },
 };
 
@@ -336,17 +336,17 @@ function drawMarkers() {
     // Node 2, 4 (y=35) di bawah → popup di atas marker (default)
     const isTopNode = y > 200;
     
+    const displayValue = activeParameter.value === 'humidity'
+      ? Math.round(parseFloat(sensor.value))
+      : sensor.value;
+
     // Popup dengan informasi node
     marker.bindPopup(`
       <div style="text-align: center; min-width: 120px;">
         <strong style="font-size: 14px;">Node ${sensor.node_id}</strong>
         <hr style="margin: 8px 0;">
         <div style="font-size: 24px; font-weight: bold; color: ${status.color};">
-          ${sensor.value}${unit}
-        </div>
-        <div style="margin-top: 4px; padding: 4px 8px; border-radius: 4px; 
-                    background-color: ${status.color}; color: white; font-weight: 500;">
-          ${status.text}
+          ${displayValue}${unit}
         </div>
       </div>
     `, {
