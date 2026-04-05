@@ -34,6 +34,10 @@ const props = defineProps({
         type: String,
         default: "",
     },
+    symbol: {
+        type: String,
+        default: "",
+    },
     chartColor: {
         type: Object,
         default: () => ({
@@ -186,7 +190,7 @@ const getChartOptions = () => ({
                     const formattedValue =
                         rawValue === null || rawValue === undefined
                             ? "-"
-                            : formatSensorValue(rawValue);
+                            : formatSensorValue(rawValue) + (props.symbol ? ` ${props.symbol}` : "");
 
                     return `${tooltipItem.dataset.label}: ${formattedValue}`;
                 },
@@ -203,7 +207,7 @@ const getChartOptions = () => ({
         y: {
             beginAtZero: false,
             ticks: {
-                callback: (value) => formatSensorValue(value),
+                callback: (value) => formatSensorValue(value) + (props.symbol ? ` ${props.symbol}` : ""),
             },
         },
     },
@@ -354,6 +358,7 @@ const buildWatchSignature = () => {
 
     return [
         normalizeWatchValue(props.sensor_name),
+        normalizeWatchValue(props.symbol),
         normalizeWatchValue(props.chartColor?.background),
         normalizeWatchValue(props.chartColor?.border),
         normalizeWatchValue(props.subtitle),

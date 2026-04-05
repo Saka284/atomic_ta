@@ -66,8 +66,19 @@ export default {
                 normalizedSymbol === "lux"
             );
         },
+        isHumidityGauge() {
+            const normalizedTitle = String(this.title || "").trim().toLowerCase();
+            const normalizedSymbol = String(this.symbol || "").trim().toLowerCase();
+
+            return (
+                normalizedTitle === "humidity" ||
+                normalizedTitle === "kelembapan" ||
+                normalizedSymbol === "%rh" ||
+                normalizedSymbol === "%"
+            );
+        },
         getDecimalPlaces() {
-            return this.isLightIntensityGauge() ? 0 : 2;
+            return this.isLightIntensityGauge() || this.isHumidityGauge() ? 0 : 2;
         },
         normalizeValue(value) {
             const numericValue = Number(value);
@@ -91,13 +102,13 @@ export default {
                 min: this.thd_min,
                 max: this.thd_max,
                 title: this.title,
-                symbol: " " + this.symbol,
+                symbol: "",
                 gaugeWidthScale: 1.0,
                 humanFriendly: false,
                 humanFriendlyDecimal: decimalPlaces,
                 startAnimationType: "bounce",
                 decimals: decimalPlaces,
-                textRenderer: (value) => this.formatGaugeValue(value),
+                textRenderer: (value) => this.formatGaugeValue(value) + ' ' + this.symbol,
                 relativeGaugeSize: true,
                 pointer: true,
                 pointerOptions: {
