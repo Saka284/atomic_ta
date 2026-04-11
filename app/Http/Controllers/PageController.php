@@ -336,6 +336,10 @@ class PageController extends Controller
                         ];
                     }
 
+                    // Kumpulkan data per (gh_id, paramKey, node_id)
+                    // Gunakan associative array agar node_id unik (tidak duplikat)
+                    $collected = []; // key: "{gh_id}_{paramKey}_{nodeId}"
+
                     foreach ($allData as $row) {
                         $paramKey = match ($row->sensor_name) {
                             'Temperature' => 'temperature',
@@ -346,10 +350,12 @@ class PageController extends Controller
 
                         if ($paramKey && isset($result[$row->gh_id])) {
                             $nodeId = $row->node_id;
+                            $isRemapped = false;
 
-                            // MAPPING KHUSUS: Jika Node 10 di GH 1, arahkan ke Node 1 agar muncul di denah
+                            // MAPPING KHUSUS: Jika Node >= 10 di GH 1, arahkan ke Node 1 agar muncul di denah
                             if ($row->gh_id == 1 && $nodeId >= 10) {
                                 $nodeId = 1;
+                                $isRemapped = true;
                             }
 
                             // Validasi: Pastikan node_id sesuai dengan denah lokasinya (GH1: 1-5, GH2: 6-10)
@@ -357,12 +363,30 @@ class PageController extends Controller
                                 ($row->gh_id == 2 && $nodeId >= 6 && $nodeId <= 10);
 
                             if ($isValidNode) {
-                                $result[$row->gh_id][$paramKey][] = [
+                                $key = "{$row->gh_id}_{$paramKey}_{$nodeId}";
+
+                                // Jika key sudah ada DAN data sekarang adalah remapped (Node 10→1),
+                                // SKIP — prioritaskan data asli Node 1 yang sudah tersimpan
+                                if (isset($collected[$key]) && $isRemapped) {
+                                    continue;
+                                }
+
+                                $collected[$key] = [
+                                    'gh_id' => $row->gh_id,
+                                    'paramKey' => $paramKey,
                                     'node_id' => $nodeId,
                                     'value' => $row->value,
                                 ];
                             }
                         }
+                    }
+
+                    // Masukkan ke result array
+                    foreach ($collected as $entry) {
+                        $result[$entry['gh_id']][$entry['paramKey']][] = [
+                            'node_id' => $entry['node_id'],
+                            'value' => $entry['value'],
+                        ];
                     }
 
                     return $result;
