@@ -217,6 +217,7 @@ const rowImageMap = ref({});
 const paginationMetaMap = ref({});
 const rowImageLoadingTimers = ref({});
 const isComponentAlive = ref(true);
+const autoRefreshInterval = ref(null);
 const loadedGreenhouseMap = ref({});
 const cameraRequestTokens = new Map();
 const cameraFetchControllers = new Map();
@@ -487,8 +488,15 @@ const loadGreenhouseDataIfNeeded = (gh_id, { force = false } = {}) => {
     fetchData(parsedGhId, { force });
 };
 
+const AUTO_REFRESH_INTERVAL_MS = 30_000; // 30 detik
 onMounted(() => {
     fetchAllGreenhouses();
+
+    autoRefreshInterval.value = setInterval(() => {
+        if (isComponentAlive.value) {
+            fetchAllGreenhouses({ force: true });
+        }
+    }, AUTO_REFRESH_INTERVAL_MS);
 });
 
 const formatDate = (date) => {
@@ -567,6 +575,12 @@ const onRowSelected = (event, gh_id) => {
 
 onUnmounted(() => {
     isComponentAlive.value = false;
+
+    if (autoRefreshInterval.value) {
+        clearInterval(autoRefreshInterval.value);
+        autoRefreshInterval.value = null;
+    }
+
     abortAllCameraFetches();
     Object.values(rowImageLoadingTimers.value).forEach((timerId) => {
         clearTimeout(timerId);
