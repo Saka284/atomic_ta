@@ -144,9 +144,9 @@ const currentGreenhouseImage = computed(() => currentGHConfig.value.image);
 // - label: nama yang ditampilkan di UI
 // ===============================
 const parameterConfig = {
-  temperature: { min: 0, max: 40, unit: '°C', labelKey: 'sensor.temperature' },
-  humidity: { min: 0, max: 100, unit: '%RH', labelKey: 'sensor.humidity' },
-  lux: { min: 0, max: 65535, unit: 'lux', labelKey: 'sensor.light_intensity' },
+  temperature: { unit: '°C', labelKey: 'sensor.temperature' },
+  humidity: { unit: '%RH', labelKey: 'sensor.humidity' },
+  lux: { unit: 'lux', labelKey: 'sensor.light_intensity' },
 };
 
 // ===============================
@@ -267,25 +267,14 @@ function getStatus(value) {
   const range = thresholds.max - thresholds.min;
   
   if (range === 0) {
-    return { text: t("heatmap.normal"), color: 'rgb(37, 99, 235)' };
+    return { color: 'rgb(37, 99, 235)' };
   }
   
   // WARNA: linear mapping (sama dengan heatmap)
   const colorObj = interpolateColor(normalizeValue(val));
   const color = `rgb(${colorObj.r}, ${colorObj.g}, ${colorObj.b})`;
   
-  // STATUS TEXT: bidirectional (deviasi dari titik tengah)
-  const center = (thresholds.min + thresholds.max) / 2;
-  const halfRange = range / 2;
-  const deviation = Math.abs(val - center) / halfRange;
-  
-  let text;
-  if (deviation <= 0.3) text = t("heatmap.safe");         // Dekat tengah = Aman
-  else if (deviation <= 0.6) text = t("heatmap.normal");   // Agak jauh = Normal
-  else if (deviation <= 1.0) text = t("heatmap.warning");  // Mendekati boundary = Waspada
-  else text = t("heatmap.critical");                        // Di luar range = Kritis
-  
-  return { text, color };
+  return { color };
 }
 
 // ===============================
@@ -344,7 +333,7 @@ function drawMarkers() {
     marker.bindPopup(`
       <div style="text-align: center; min-width: 120px;">
         <strong style="font-size: 14px;">Node ${sensor.node_id}</strong>
-        <hr style="margin: 8px 0;">
+        <hr style="margin: 8px 0; border: none; border-top: 1px solid rgba(0, 0, 0, 0.2);">
         <div style="font-size: 24px; font-weight: bold; color: ${status.color};">
           ${displayValue}${unit}
         </div>
@@ -356,9 +345,10 @@ function drawMarkers() {
       offset: isTopNode ? [0, 140] : [0, 0],
     });
 
-    // UX: tampilkan informasi node saat hover, tanpa harus klik marker.
+    // UX: tampilkan informasi node saat hover (desktop) atau single tap (mobile/Android).
     let popupCloseTimer = null;
     let popupElement = null;
+    let tappedRecently = false; // Flag: baru saja di-tap (touch device)
     const cancelPopupClose = () => {
       if (popupCloseTimer !== null) {
         clearTimeout(popupCloseTimer);
@@ -384,7 +374,16 @@ function drawMarkers() {
       marker.openPopup();
     });
     marker.on("mouseout", () => {
+      // Skip close jika baru saja di-tap (mobile), agar popup tidak langsung tertutup
+      if (tappedRecently) return;
       schedulePopupClose();
+    });
+    // Single tap untuk mobile/Android: langsung buka popup tanpa perlu double tap
+    marker.on("click", () => {
+      cancelPopupClose();
+      tappedRecently = true;
+      marker.openPopup();
+      setTimeout(() => { tappedRecently = false; }, 300);
     });
     marker.on("popupopen", () => {
       popupElement = marker.getPopup()?.getElement() || null;
@@ -1466,6 +1465,10 @@ watch(
 .node-popup .leaflet-popup-content-wrapper {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.7) !important;
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
 }
 
 .node-popup .leaflet-popup-content {
@@ -1474,6 +1477,8 @@ watch(
 
 .node-popup .leaflet-popup-tip {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.7) !important;
+  background-color: rgba(255, 255, 255, 0.7) !important;
 }
 
 /* Popup untuk node atas - panah mengarah ke atas */

@@ -109,7 +109,7 @@ const switchToEnglish = () => {
                                 </span>
                                 <span class="leading-tight">
                                     <span class="block text-lg font-bold tracking-tight text-emerald-700">
-                                        Medini
+                                        Atomic
                                     </span>
                                     <span class="block text-xs text-slate-500">
                                         {{ t("layout.brand_console") }}

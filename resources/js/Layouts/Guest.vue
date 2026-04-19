@@ -12,7 +12,7 @@ import { Link } from "@inertiajs/vue3";
                 class="text-5xl font-bold tracking-wide text-green-600 flex items-center gap-2"
             >
                 <i class="fas fa-seedling text-green-600 text-6xl"></i>
-                Medini
+                Atomic
             </Link>
         </div>
 
