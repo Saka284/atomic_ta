@@ -1465,8 +1465,8 @@ watch(
 .node-popup .leaflet-popup-content-wrapper {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  background: rgba(255, 255, 255, 0.7) !important;
-  background-color: rgba(255, 255, 255, 0.7) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  background-color: rgba(255, 255, 255, 0.6) !important;
   backdrop-filter: blur(8px) !important;
   -webkit-backdrop-filter: blur(8px) !important;
 }
@@ -1477,8 +1477,8 @@ watch(
 
 .node-popup .leaflet-popup-tip {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  background: rgba(255, 255, 255, 0.7) !important;
-  background-color: rgba(255, 255, 255, 0.7) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  background-color: rgba(255, 255, 255, 0.6) !important;
 }
 
 /* Popup untuk node atas - panah mengarah ke atas */
