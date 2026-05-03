@@ -26,13 +26,10 @@ const rowImageLoading = ref({});
 const rowTableLoading = ref({});
 
 const activeActuatorGhId = computed(() => {
-    const parsedSelected = Number(selectedGreenhouse.value);
-    if (Number.isFinite(parsedSelected) && parsedSelected > 0) {
-        return parsedSelected;
-    }
-
-    const fallback = Number(greenhouses?.[0]?.id);
-    return Number.isFinite(fallback) && fallback > 0 ? fallback : 1;
+    // Camera selalu menampilkan aktuator GH2 (deteksi kabut)
+    const gh2 = greenhouses?.[1] ?? greenhouses?.[0];
+    const fallback = Number(gh2?.id);
+    return Number.isFinite(fallback) && fallback > 0 ? fallback : 2;
 });
 
 const actuators = computed(() => {
