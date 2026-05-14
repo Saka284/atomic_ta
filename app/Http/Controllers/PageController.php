@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
+
 class PageController extends Controller
 {
     private function getGreenhousesBasic()
@@ -25,6 +26,8 @@ class PageController extends Controller
                 ->get();
         });
     }
+
+//test
 
     private function ensureSensorSnapshotsReady(): void
     {
@@ -446,64 +449,6 @@ class PageController extends Controller
             },
         ]);
     }
-
-    /**
-     * Helper: Generate dummy data for development
-     */
-    private function getDummyData($baseNodeId, $values)
-    {
-        return array_map(function ($i) use ($baseNodeId, $values) {
-            return ['node_id' => $baseNodeId + $i, 'value' => $values[$i]];
-        }, range(0, 4));
-    }
-
-    /**
-     * Helper: Get latest sensor data for a specific greenhouse and sensor type
-     */
-    private function getLatestSensorDataForGh($ghId, $sensorName)
-    {
-        $data = SensorData::select('sensor_data.node_id', 'sensor_data.value', 'sensor_data.recorded_at')
-            ->join('sensors', 'sensors.id', '=', 'sensor_data.sensor_id')
-            ->where('sensors.gh_id', $ghId)
-            ->where('sensors.name', $sensorName)
-            ->whereIn('sensor_data.id', function ($query) use ($ghId, $sensorName) {
-                $query->selectRaw('MAX(sd.id)')
-                    ->from('sensor_data as sd')
-                    ->join('sensors as s', 's.id', '=', 'sd.sensor_id')
-                    ->where('s.gh_id', $ghId)
-                    ->where('s.name', $sensorName)
-                    ->groupBy('sd.node_id');
-            })
-            ->get();
-
-        // Fallback dummy data jika kosong (untuk development)
-        if ($data->isEmpty()) {
-            $baseNodeId = $ghId === 1 ? 1 : 6;
-            return collect([
-                ['node_id' => $baseNodeId, 'value' => $this->getDummyValue($sensorName, 0)],
-                ['node_id' => $baseNodeId + 1, 'value' => $this->getDummyValue($sensorName, 1)],
-                ['node_id' => $baseNodeId + 2, 'value' => $this->getDummyValue($sensorName, 2)],
-                ['node_id' => $baseNodeId + 3, 'value' => $this->getDummyValue($sensorName, 3)],
-                ['node_id' => $baseNodeId + 4, 'value' => $this->getDummyValue($sensorName, 4)],
-            ]);
-        }
-
-        return $data;
-    }
-
-    /**
-     * Helper: Get dummy value for development/testing
-     */
-    private function getDummyValue($sensorName, $index)
-    {
-        $values = [
-            'Temperature' => [20, 25, 30, 35, 40],
-            'Humidity' => [45, 55, 65, 75, 85],
-            'Light Intensity' => [10000, 20000, 35000, 50000, 65000],
-        ];
-        return $values[$sensorName][$index] ?? 0;
-    }
-
 
     public function camera()
     {
